@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  car-analysis-dashboard:
+    build: .
+    container_name: autointel-dashboard
+    ports:
+      - "8501:8501"
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+    volumes:
+      # Mount datasets directory for data persistence
+      - ./datasets:/app/datasets:ro
+      # Mount logs directory for log persistence
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - autointel-network
+
+  # Optional: PostgreSQL database for production use
+  postgres:
+    image: postgres:15-alpine
+    container_name: autointel-db
+    environment:
+      - POSTGRES_DB=car_analysis
+      - POSTGRES_USER=autointel
+      - POSTGRES_PASSWORD=secure_password_change_me
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - autointel-network
+
+volumes:
+  postgres_data:
+
+networks:
+  autointel-network:
+    driver: bridge
