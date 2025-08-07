@@ -211,9 +211,9 @@ def create_sentiment_distribution_chart(df, title):
         names=sentiment_counts.index,
         title=title,
         color_discrete_map={
-            'positive': '#28a745',  # Green
-            'negative': '#dc3545',  # Red
-            'neutral': '#ffc107'    # Yellow
+            'positive': '#00ff00',  # Traffic Light Green
+            'negative': '#ff0000',  # Traffic Light Red
+            'neutral': '#ffff00'    # Traffic Light Yellow
         }
     )
     
@@ -243,9 +243,9 @@ def create_sentiment_bar_chart(df, title):
         title=title,
         color=sentiment_counts.index,
         color_discrete_map={
-            'positive': '#28a745',  # Green
-            'negative': '#dc3545',  # Red
-            'neutral': '#ffc107'    # Yellow
+            'positive': '#00ff00',  # Traffic Light Green
+            'negative': '#ff0000',  # Traffic Light Red
+            'neutral': '#ffff00'    # Traffic Light Yellow
         },
         labels={'x': 'Sentiment', 'y': 'Count'}
     )
@@ -323,9 +323,9 @@ def create_sentiment_trend_chart(df, title):
         color='sentiment',
         title=title,
         color_discrete_map={
-            'positive': '#28a745',  # Green
-            'negative': '#dc3545',  # Red
-            'neutral': '#ffc107'    # Yellow
+            'positive': '#00ff00',  # Traffic Light Green
+            'negative': '#ff0000',  # Traffic Light Red
+            'neutral': '#ffff00'    # Traffic Light Yellow
         }
     )
     
@@ -375,7 +375,7 @@ def create_sentiment_vs_rating_scatter(df):
         return None
     
     # Create color mapping for sentiment
-    color_map = {'positive': '#28a745', 'negative': '#dc3545', 'neutral': '#ffc107'}
+    color_map = {'positive': '#00ff00', 'negative': '#ff0000', 'neutral': '#ffff00'}
     filtered_df['sentiment_color'] = filtered_df['sentiment'].map(color_map)
     
     fig = px.scatter(
@@ -413,7 +413,7 @@ def create_review_length_vs_rating_scatter(df):
         color='sentiment',
         title="Review Length vs Rating",
         labels={'rating': 'Rating (Stars)', 'review_length': 'Review Length (Characters)'},
-        color_discrete_map={'positive': '#28a745', 'negative': '#dc3545', 'neutral': '#ffc107'},
+        color_discrete_map={'positive': '#00ff00', 'negative': '#ff0000', 'neutral': '#ffff00'},
         hover_data=['title']
     )
     
@@ -441,7 +441,7 @@ def create_sentiment_vs_review_length_scatter(df):
         color='sentiment',
         title="Sentiment Score vs Review Length",
         labels={'review_length': 'Review Length (Characters)', 'sentiment_score': 'Sentiment Score'},
-        color_discrete_map={'positive': '#28a745', 'negative': '#dc3545', 'neutral': '#ffc107'},
+        color_discrete_map={'positive': '#00ff00', 'negative': '#ff0000', 'neutral': '#ffff00'},
         hover_data=['title']
     )
     
@@ -608,7 +608,7 @@ def create_enhanced_time_series_analysis(df, market_data, title):
             y=merged_data['avg_sentiment'],
             mode='lines',
             name='Average Sentiment',
-            line=dict(color='#28a745', width=2)
+            line=dict(color='#00ff00', width=2)
         ),
         row=1, col=1
     )
@@ -620,7 +620,7 @@ def create_enhanced_time_series_analysis(df, market_data, title):
             y=merged_data['interest_rate'],
             mode='lines',
             name='Interest Rate',
-            line=dict(color='#dc3545', width=2)
+            line=dict(color='#ff0000', width=2)
         ),
         row=2, col=1
     )
@@ -632,7 +632,7 @@ def create_enhanced_time_series_analysis(df, market_data, title):
             y=merged_data['consumer_confidence'],
             mode='lines',
             name='Consumer Confidence',
-            line=dict(color='#ffc107', width=2)
+            line=dict(color='#ffff00', width=2)
         ),
         row=3, col=1
     )
@@ -644,7 +644,7 @@ def create_enhanced_time_series_analysis(df, market_data, title):
             y=merged_data['avg_sentiment'],
             mode='lines',
             name='Sentiment',
-            line=dict(color='#28a745', width=2)
+            line=dict(color='#00ff00', width=2)
         ),
         row=4, col=1
     )
@@ -655,7 +655,7 @@ def create_enhanced_time_series_analysis(df, market_data, title):
             y=merged_data['interest_rate'],
             mode='lines',
             name='Interest Rate',
-            line=dict(color='#dc3545', width=2, dash='dash'),
+            line=dict(color='#ff0000', width=2, dash='dash'),
             yaxis='y2'
         ),
         row=4, col=1,
@@ -1811,7 +1811,7 @@ def main():
         st.markdown('<h2 class="section-header">😊 Sentiment Analysis</h2>', unsafe_allow_html=True)
         
         # Sentiment Value Explanation
-        st.info("📊 **Sentiment Value Ranges**: 🟢 Positive (>0.05) | 🟡 Neutral (-0.05 to 0.05) | 🔴 Negative (<-0.05)")
+        st.info("📊 **Sentiment Value Ranges**: 🟢 Positive (0.1 to 1.0) | 🟡 Neutral (-0.1 to 0.1) | 🔴 Negative (-1.0 to -0.1)")
         
         # Sentiment Distribution Visualizations
         st.subheader("📊 Sentiment Distribution")
@@ -2149,7 +2149,7 @@ def main():
                             )
                         with col3:
                             avg_sentiment = correlation_data['avg_sentiment'].mean()
-                            color = "🟢" if avg_sentiment > 0.05 else "🔴" if avg_sentiment < -0.05 else "🟡"
+                            color = "🟢" if avg_sentiment > 0.1 else "🔴" if avg_sentiment < -0.1 else "🟡"
                             st.metric(
                                 "📊 Average Sentiment", 
                                 f"{avg_sentiment:.3f} {color}",
