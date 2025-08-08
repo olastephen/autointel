@@ -103,11 +103,17 @@ class CarAnalysisFramework:
         else:
             self.db_config = None
         
-        # Load spaCy model
+        # Load spaCy model with enhanced error handling
         try:
             self.nlp = spacy.load("en_core_web_sm")
+            print("✅ spaCy en_core_web_sm model loaded successfully")
         except OSError:
-            print("spaCy model not found. Please install with: python -m spacy download en_core_web_sm")
+            print("⚠️  spaCy model not found. Skipping NER analysis.")
+            print("   To fix: python -m spacy download en_core_web_sm")
+            self.nlp = None
+        except Exception as e:
+            print(f"⚠️  Error loading spaCy model: {e}")
+            print("   NER analysis will be skipped")
             self.nlp = None
     
     def load_data(self):
@@ -188,46 +194,46 @@ class CarAnalysisFramework:
         
         def extract_topics(text_series, n_topics=5, n_words=10):
             """Extract topics using LDA"""
-            # Clean and prepare text
-            clean_texts = self.preprocess_text(text_series)
-            clean_texts = clean_texts[clean_texts != ""]
-            
-            if len(clean_texts) == 0:
+        # Clean and prepare text
+        clean_texts = self.preprocess_text(text_series)
+        clean_texts = clean_texts[clean_texts != ""]
+        
+        if len(clean_texts) == 0:
                 return []
+        
+        # Vectorize
+        vectorizer = CountVectorizer(
+            stop_words='english', 
+            max_df=0.95, 
+            min_df=2,
+            max_features=1000
+        )
+        
+        try:
+            dtm = vectorizer.fit_transform(clean_texts)
             
-            # Vectorize
-            vectorizer = CountVectorizer(
-                stop_words='english', 
-                max_df=0.95, 
-                min_df=2,
-                max_features=1000
+            # LDA
+            lda = LatentDirichletAllocation(
+                n_components=n_topics, 
+                random_state=42,
+                max_iter=50
             )
+            lda.fit(dtm)
             
-            try:
-                dtm = vectorizer.fit_transform(clean_texts)
-                
-                # LDA
-                lda = LatentDirichletAllocation(
-                    n_components=n_topics, 
-                    random_state=42,
-                    max_iter=50
-                )
-                lda.fit(dtm)
-                
-                # Get topics
-                feature_names = vectorizer.get_feature_names_out()
-                topics = []
-                
-                for topic_idx, topic in enumerate(lda.components_):
-                    top_words_idx = topic.argsort()[-n_words:][::-1]
-                    top_words = [feature_names[i] for i in top_words_idx]
-                    topics.append(top_words)
-                
-                return topics
-                
-            except Exception as e:
-                print(f"Error in topic modeling: {e}")
-                return []
+            # Get topics
+            feature_names = vectorizer.get_feature_names_out()
+            topics = []
+            
+            for topic_idx, topic in enumerate(lda.components_):
+                top_words_idx = topic.argsort()[-n_words:][::-1]
+                top_words = [feature_names[i] for i in top_words_idx]
+                topics.append(top_words)
+            
+            return topics
+            
+        except Exception as e:
+            print(f"Error in topic modeling: {e}")
+            return []
         
         # Get text columns
         text_cols = self.get_text_columns()
@@ -280,7 +286,7 @@ class CarAnalysisFramework:
                 for ent in doc.ents:
                     if ent.label_ in ['ORG', 'GPE', 'PRODUCT']:
                         text_entities.append(f"{ent.text.lower()}:{ent.label_}")
-                
+            
                 # Also look for car brands in the text
                 text_lower = str(text).lower()
                 for brand in car_brands:
@@ -434,17 +440,23 @@ class CarAnalysisFramework:
             if news_text_col in self.car_news_df.columns:
                 print(f"Extracting bigrams for news using column: {news_text_col}")
                 bigram_results = extract_ngrams(self.car_news_df[news_text_col], n=2, top_n=15)
-                # Store bigrams as JSON string
-                self.car_news_df['top_bigrams'] = json.dumps(bigram_results) if bigram_results else None
+                # Store bigrams as JSON string with validation
+                if bigram_results and isinstance(bigram_results, list):
+                    self.car_news_df['top_bigrams'] = json.dumps(bigram_results, ensure_ascii=False)
+                else:
+                    self.car_news_df['top_bigrams'] = json.dumps([])
                 
                 print(f"Extracting trigrams for news using column: {news_text_col}")
                 trigram_results = extract_ngrams(self.car_news_df[news_text_col], n=3, top_n=15)
-                # Store trigrams as JSON string
-                self.car_news_df['top_trigrams'] = json.dumps(trigram_results) if trigram_results else None
+                # Store trigrams as JSON string with validation
+                if trigram_results and isinstance(trigram_results, list):
+                    self.car_news_df['top_trigrams'] = json.dumps(trigram_results, ensure_ascii=False)
+                else:
+                    self.car_news_df['top_trigrams'] = json.dumps([])
                 
                 # Keep the old column for backward compatibility
-                combined_ngrams = bigram_results + trigram_results
-                self.car_news_df['top_ngrams'] = json.dumps(combined_ngrams) if combined_ngrams else None
+                combined_ngrams = (bigram_results if bigram_results else []) + (trigram_results if trigram_results else [])
+                self.car_news_df['top_ngrams'] = json.dumps(combined_ngrams, ensure_ascii=False)
         
         # Apply n-gram analysis to reviews
         if 'reviews' in text_cols and self.car_reviews_df is not None:
@@ -452,17 +464,23 @@ class CarAnalysisFramework:
             if reviews_text_col in self.car_reviews_df.columns:
                 print(f"Extracting bigrams for reviews using column: {reviews_text_col}")
                 bigram_results = extract_ngrams(self.car_reviews_df[reviews_text_col], n=2, top_n=15)
-                # Store bigrams as JSON string
-                self.car_reviews_df['top_bigrams'] = json.dumps(bigram_results) if bigram_results else None
+                # Store bigrams as JSON string with validation
+                if bigram_results and isinstance(bigram_results, list):
+                    self.car_reviews_df['top_bigrams'] = json.dumps(bigram_results, ensure_ascii=False)
+                else:
+                    self.car_reviews_df['top_bigrams'] = json.dumps([])
                 
                 print(f"Extracting trigrams for reviews using column: {reviews_text_col}")
                 trigram_results = extract_ngrams(self.car_reviews_df[reviews_text_col], n=3, top_n=15)
-                # Store trigrams as JSON string
-                self.car_reviews_df['top_trigrams'] = json.dumps(trigram_results) if trigram_results else None
+                # Store trigrams as JSON string with validation
+                if trigram_results and isinstance(trigram_results, list):
+                    self.car_reviews_df['top_trigrams'] = json.dumps(trigram_results, ensure_ascii=False)
+                else:
+                    self.car_reviews_df['top_trigrams'] = json.dumps([])
                 
                 # Keep the old column for backward compatibility
-                combined_ngrams = bigram_results + trigram_results
-                self.car_reviews_df['top_ngrams'] = json.dumps(combined_ngrams) if combined_ngrams else None
+                combined_ngrams = (bigram_results if bigram_results else []) + (trigram_results if trigram_results else [])
+                self.car_reviews_df['top_ngrams'] = json.dumps(combined_ngrams, ensure_ascii=False)
         
         print("✓ N-gram analysis completed")
     
@@ -544,7 +562,6 @@ class CarAnalysisFramework:
             
             print("✓ Results saved to database successfully")
             return True
-                
         except Exception as e:
             print(f"Error saving results to database: {e}")
             return False

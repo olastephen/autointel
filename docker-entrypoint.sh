@@ -63,6 +63,32 @@ for data_name in required_data:
 
 print("📚 NLTK data check completed")
 EOF
+
+    # Check and download spaCy model
+    echo "🧠 Ensuring spaCy model is available..."
+    python3 << 'EOF'
+import subprocess
+import sys
+
+try:
+    import spacy
+    # Try to load the English model
+    try:
+        nlp = spacy.load("en_core_web_sm")
+        print("✅ spaCy en_core_web_sm model is available")
+    except OSError:
+        print("📥 Downloading spaCy en_core_web_sm model...")
+        try:
+            subprocess.check_call([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
+            print("✅ spaCy model downloaded successfully")
+        except subprocess.CalledProcessError as e:
+            print(f"⚠️  Failed to download spaCy model: {e}")
+            print("🔄 NER analysis will be skipped")
+except ImportError:
+    print("⚠️  spaCy not installed, NER analysis will be skipped")
+
+print("🧠 spaCy model check completed")
+EOF
 }
 
 # Function to run analysis framework

@@ -96,7 +96,7 @@ def load_data_from_database():
         return None, None
 
 def parse_json_column(df, column_name):
-    """Parse JSON strings from database columns"""
+    """Parse JSON strings from database columns with enhanced error handling"""
     if column_name not in df.columns:
         return []
     
@@ -106,10 +106,27 @@ def parse_json_column(df, column_name):
             parsed_data.append([])
         elif isinstance(value, str):
             try:
+                # First try to parse as JSON
                 parsed = json.loads(value)
                 parsed_data.append(parsed if isinstance(parsed, list) else [])
             except json.JSONDecodeError:
-                parsed_data.append([])
+                try:
+                    # Fallback: try to evaluate as Python list (for old data)
+                    import ast
+                    parsed = ast.literal_eval(value)
+                    parsed_data.append(parsed if isinstance(parsed, list) else [])
+                except (ValueError, SyntaxError):
+                    # If all else fails, try to split the string representation
+                    if value.startswith('[') and value.endswith(']'):
+                        # Remove brackets and quotes, split by comma
+                        clean_value = value.strip('[]').replace("'", "").replace('"', '')
+                        if clean_value:
+                            items = [item.strip() for item in clean_value.split(',') if item.strip()]
+                            parsed_data.append(items)
+                        else:
+                            parsed_data.append([])
+                    else:
+                        parsed_data.append([])
         else:
             parsed_data.append(value if isinstance(value, list) else [])
     
@@ -1474,18 +1491,28 @@ def display_ngram_analysis(df, title):
     # Fall back to old combined column if new columns don't exist
     if not all_bigrams and not all_trigrams and 'top_ngrams' in df.columns:
         ngrams_data = parse_json_column(df, 'top_ngrams')
-    for ngrams_list in ngrams_data:
-        if isinstance(ngrams_list, list):
-            for ngram in ngrams_list:
-                if isinstance(ngram, str):
-                    word_count = len(ngram.split())
-                    if word_count == 2:
-                        all_bigrams.append(ngram)
-                    elif word_count == 3:
-                        all_trigrams.append(ngram)
+        for ngrams_list in ngrams_data:
+            if isinstance(ngrams_list, list):
+                for ngram in ngrams_list:
+                    if isinstance(ngram, str):
+                        word_count = len(ngram.split())
+                        if word_count == 2:
+                            all_bigrams.append(ngram)
+                        elif word_count == 3:
+                            all_trigrams.append(ngram)
+    
+    # Debug information for troubleshooting
+    if st.secrets.get("DEBUG_MODE", False):
+        st.write(f"Debug - Bigrams found: {len(all_bigrams)}")
+        st.write(f"Debug - Trigrams found: {len(all_trigrams)}")
+        if all_bigrams:
+            st.write(f"Debug - Sample bigrams: {all_bigrams[:3]}")
+        if all_trigrams:
+            st.write(f"Debug - Sample trigrams: {all_trigrams[:3]}")
     
     if not all_bigrams and not all_trigrams:
         st.warning(f"No n-grams data found in {title}")
+        st.info("💡 **Tip**: Run the analysis framework to generate n-gram data")
         return
     
     # Display statistics
