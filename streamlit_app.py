@@ -1489,17 +1489,18 @@ def display_ngram_analysis(df, title):
                 all_trigrams.append(trigrams_list)
     
     # Fall back to old combined column if new columns don't exist
+    ngrams_data = []
     if not all_bigrams and not all_trigrams and 'top_ngrams' in df.columns:
         ngrams_data = parse_json_column(df, 'top_ngrams')
-    for ngrams_list in ngrams_data:
-        if isinstance(ngrams_list, list):
-            for ngram in ngrams_list:
-                if isinstance(ngram, str):
-                    word_count = len(ngram.split())
-                    if word_count == 2:
-                        all_bigrams.append(ngram)
-                    elif word_count == 3:
-                        all_trigrams.append(ngram)
+        for ngrams_list in ngrams_data:
+            if isinstance(ngrams_list, list):
+                for ngram in ngrams_list:
+                    if isinstance(ngram, str):
+                        word_count = len(ngram.split())
+                        if word_count == 2:
+                            all_bigrams.append(ngram)
+                        elif word_count == 3:
+                            all_trigrams.append(ngram)
     
     # Debug information for troubleshooting (optional, controlled by environment variable)
     import os
@@ -1572,7 +1573,23 @@ def display_ngram_analysis(df, title):
     # Show sample n-grams
     st.subheader(f"{title} - Sample N-grams")
     sample_ngrams = []
-    for i, ngrams_list in enumerate(ngrams_data[:5]):  # Show first 5
+    
+    # Use the appropriate data source for sample display
+    if 'top_ngrams' in df.columns:
+        sample_data = parse_json_column(df, 'top_ngrams')
+    elif 'top_bigrams' in df.columns or 'top_trigrams' in df.columns:
+        # Combine bigrams and trigrams for sample display
+        sample_data = []
+        if 'top_bigrams' in df.columns:
+            bigrams_data = parse_json_column(df, 'top_bigrams')
+            sample_data.extend(bigrams_data[:3])  # First 3 records
+        if 'top_trigrams' in df.columns:
+            trigrams_data = parse_json_column(df, 'top_trigrams')
+            sample_data.extend(trigrams_data[:2])  # First 2 records
+    else:
+        sample_data = []
+    
+    for i, ngrams_list in enumerate(sample_data[:5]):  # Show first 5
         if isinstance(ngrams_list, list) and ngrams_list:
             sample_ngrams.append(f"**Record {i+1}:** {', '.join(ngrams_list[:5])}")
     
