@@ -734,25 +734,25 @@ def display_keyword_analysis(df, title):
         wordcloud_fig = create_wordcloud(all_keywords, f"{title} - Word Cloud")
         if wordcloud_fig:
             st.pyplot(wordcloud_fig)
-        
-        # Create bar chart
-        plot_df = pd.DataFrame({
-            'Keyword': keyword_counts.index,
-            'Frequency': keyword_counts.values
-        })
-        
-        fig = px.bar(
-            plot_df,
-            x='Frequency',
-            y='Keyword',
-            orientation='h',
-            title=f"{title} - Top Keywords",
-            labels={'x': 'Frequency', 'y': 'Keywords'},
-            color='Frequency',
+    
+    # Create bar chart
+    plot_df = pd.DataFrame({
+        'Keyword': keyword_counts.index,
+        'Frequency': keyword_counts.values
+    })
+    
+    fig = px.bar(
+        plot_df,
+        x='Frequency',
+        y='Keyword',
+        orientation='h',
+        title=f"{title} - Top Keywords",
+        labels={'x': 'Frequency', 'y': 'Keywords'},
+        color='Frequency',
             color_continuous_scale='blues'
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
     
     with tab2:
         st.subheader("🔗 Keyword Co-occurrence Analysis")
@@ -1491,15 +1491,15 @@ def display_ngram_analysis(df, title):
     # Fall back to old combined column if new columns don't exist
     if not all_bigrams and not all_trigrams and 'top_ngrams' in df.columns:
         ngrams_data = parse_json_column(df, 'top_ngrams')
-        for ngrams_list in ngrams_data:
-            if isinstance(ngrams_list, list):
-                for ngram in ngrams_list:
-                    if isinstance(ngram, str):
-                        word_count = len(ngram.split())
-                        if word_count == 2:
-                            all_bigrams.append(ngram)
-                        elif word_count == 3:
-                            all_trigrams.append(ngram)
+    for ngrams_list in ngrams_data:
+        if isinstance(ngrams_list, list):
+            for ngram in ngrams_list:
+                if isinstance(ngram, str):
+                    word_count = len(ngram.split())
+                    if word_count == 2:
+                        all_bigrams.append(ngram)
+                    elif word_count == 3:
+                        all_trigrams.append(ngram)
     
     # Debug information for troubleshooting (optional, controlled by environment variable)
     import os
@@ -2075,25 +2075,25 @@ def main():
         
         with time_tab1:
             st.subheader("📈 Publication Timeline")
+        
+        if data_type == "📊 Both Datasets":
+            col1, col2 = st.columns(2)
             
-            if data_type == "📊 Both Datasets":
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    if len(filtered_news) > 0:
-                        fig = create_time_series_chart(filtered_news, 'publication_date', 'title', "News Publication Timeline")
-                        if fig:
-                            st.plotly_chart(fig, use_container_width=True)
-                
-                with col2:
-                    if len(filtered_reviews) > 0:
-                        fig = create_time_series_chart(filtered_reviews, 'publication_date', 'title', "Reviews Publication Timeline")
-                        if fig:
-                            st.plotly_chart(fig, use_container_width=True)
-            else:
-                fig = create_time_series_chart(current_df, 'publication_date', 'title', f"{df_name} Publication Timeline")
-                if fig:
-                    st.plotly_chart(fig, use_container_width=True)
+            with col1:
+                if len(filtered_news) > 0:
+                    fig = create_time_series_chart(filtered_news, 'publication_date', 'title', "News Publication Timeline")
+                    if fig:
+                        st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                if len(filtered_reviews) > 0:
+                    fig = create_time_series_chart(filtered_reviews, 'publication_date', 'title', "Reviews Publication Timeline")
+                    if fig:
+                        st.plotly_chart(fig, use_container_width=True)
+        else:
+            fig = create_time_series_chart(current_df, 'publication_date', 'title', f"{df_name} Publication Timeline")
+            if fig:
+                st.plotly_chart(fig, use_container_width=True)
         
         with time_tab2:
             st.subheader("🏢 Consumer Sentiment vs Market Data")
