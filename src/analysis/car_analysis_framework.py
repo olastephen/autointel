@@ -194,46 +194,46 @@ class CarAnalysisFramework:
         
         def extract_topics(text_series, n_topics=5, n_words=10):
             """Extract topics using LDA"""
-        # Clean and prepare text
-        clean_texts = self.preprocess_text(text_series)
-        clean_texts = clean_texts[clean_texts != ""]
-        
-        if len(clean_texts) == 0:
+            # Clean and prepare text
+            clean_texts = self.preprocess_text(text_series)
+            clean_texts = clean_texts[clean_texts != ""]
+            
+            if len(clean_texts) == 0:
                 return []
-        
-        # Vectorize
-        vectorizer = CountVectorizer(
-            stop_words='english', 
-            max_df=0.95, 
-            min_df=2,
-            max_features=1000
-        )
-        
-        try:
-            dtm = vectorizer.fit_transform(clean_texts)
             
-            # LDA
-            lda = LatentDirichletAllocation(
-                n_components=n_topics, 
-                random_state=42,
-                max_iter=50
+            # Vectorize
+            vectorizer = CountVectorizer(
+                stop_words='english', 
+                max_df=0.95, 
+                min_df=2,
+                max_features=1000
             )
-            lda.fit(dtm)
             
-            # Get topics
-            feature_names = vectorizer.get_feature_names_out()
-            topics = []
-            
-            for topic_idx, topic in enumerate(lda.components_):
-                top_words_idx = topic.argsort()[-n_words:][::-1]
-                top_words = [feature_names[i] for i in top_words_idx]
-                topics.append(top_words)
-            
-            return topics
-            
-        except Exception as e:
-            print(f"Error in topic modeling: {e}")
-            return []
+            try:
+                dtm = vectorizer.fit_transform(clean_texts)
+                
+                # LDA
+                lda = LatentDirichletAllocation(
+                    n_components=n_topics, 
+                    random_state=42,
+                    max_iter=50
+                )
+                lda.fit(dtm)
+                
+                # Get topics
+                feature_names = vectorizer.get_feature_names_out()
+                topics = []
+                
+                for topic_idx, topic in enumerate(lda.components_):
+                    top_words_idx = topic.argsort()[-n_words:][::-1]
+                    top_words = [feature_names[i] for i in top_words_idx]
+                    topics.append(top_words)
+                
+                return topics
+                
+            except Exception as e:
+                print(f"Error in topic modeling: {e}")
+                return []
         
         # Get text columns
         text_cols = self.get_text_columns()
