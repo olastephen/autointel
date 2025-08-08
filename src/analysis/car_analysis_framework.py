@@ -327,9 +327,20 @@ class CarAnalysisFramework:
             # Combine all texts
             all_text = ' '.join(clean_texts.dropna())
             
-            # Tokenize and remove stopwords
-            stop_words = set(stopwords.words('english'))
-            tokens = word_tokenize(all_text.lower())
+            # Tokenize and remove stopwords with fallback handling
+            try:
+                stop_words = set(stopwords.words('english'))
+            except LookupError:
+                print("⚠️  NLTK stopwords not available, using basic stopwords")
+                stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them'}
+            
+            try:
+                tokens = word_tokenize(all_text.lower())
+            except LookupError:
+                print("⚠️  NLTK punkt tokenizer not available, using simple tokenization")
+                import re
+                tokens = re.findall(r'\b[a-zA-Z]+\b', all_text.lower())
+            
             tokens = [token for token in tokens if token.isalpha() and token not in stop_words]
             
             # Count frequencies
@@ -372,8 +383,13 @@ class CarAnalysisFramework:
             # Clean texts
             clean_texts = self.preprocess_text(text_series)
             
-            # Enhanced stopwords list
-            stop_words = set(stopwords.words('english'))
+            # Enhanced stopwords list with fallback handling
+            try:
+                stop_words = set(stopwords.words('english'))
+            except LookupError:
+                print("⚠️  NLTK stopwords not available, using basic stopwords")
+                stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them'}
+            
             # Add common car-related stopwords that are not meaningful
             car_stopwords = {'car', 'vehicle', 'auto', 'automotive', 'review', 'test', 'drive', 'model', 'new', 'good', 'bad', 'great', 'nice', 'best', 'worst', 'really', 'very', 'much', 'get', 'go', 'like', 'would', 'could', 'should', 'one', 'two', 'also', 'even', 'well', 'way', 'say', 'said', 'make', 'made', 'take', 'come', 'see', 'know', 'think', 'want', 'need', 'use', 'used', 'look', 'looks', 'feel', 'feels', 'seem', 'seems'}
             stop_words.update(car_stopwords)
@@ -382,7 +398,13 @@ class CarAnalysisFramework:
             all_ngrams = []
             for text in clean_texts:
                 if text.strip():
-                    tokens = word_tokenize(text.lower())
+                    try:
+                        tokens = word_tokenize(text.lower())
+                    except LookupError:
+                        # Fallback to simple tokenization
+                        import re
+                        tokens = re.findall(r'\b[a-zA-Z]+\b', text.lower())
+                    
                     # Remove stopwords and short words
                     filtered_tokens = [token for token in tokens if token.isalpha() and len(token) > 2 and token not in stop_words]
                     

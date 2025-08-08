@@ -26,10 +26,52 @@ check_datasets() {
     return 0
 }
 
+# Function to ensure NLTK data is available
+ensure_nltk_data() {
+    echo "📚 Ensuring NLTK data is available..."
+    
+    python3 << 'EOF'
+import nltk
+import os
+
+# Create NLTK data directory if it doesn't exist
+nltk_data_dir = '/root/nltk_data'
+if not os.path.exists(nltk_data_dir):
+    os.makedirs(nltk_data_dir, exist_ok=True)
+
+# Download required NLTK data
+required_data = [
+    'punkt',
+    'punkt_tab', 
+    'stopwords',
+    'averaged_perceptron_tagger',
+    'wordnet',
+    'vader_lexicon'
+]
+
+for data_name in required_data:
+    try:
+        nltk.data.find(f'tokenizers/{data_name}')
+        print(f"✅ {data_name} already available")
+    except LookupError:
+        try:
+            print(f"📥 Downloading {data_name}...")
+            nltk.download(data_name, quiet=True)
+            print(f"✅ {data_name} downloaded successfully")
+        except Exception as e:
+            print(f"⚠️  Failed to download {data_name}: {e}")
+
+print("📚 NLTK data check completed")
+EOF
+}
+
 # Function to run analysis framework
 run_analysis() {
     echo "🔄 Executing car analysis framework..."
     echo "📈 This may take a few minutes for initial analysis..."
+    
+    # Ensure NLTK data is available
+    ensure_nltk_data
     
     # Set PYTHONPATH to ensure imports work
     export PYTHONPATH=/app:$PYTHONPATH
