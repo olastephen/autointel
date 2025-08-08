@@ -210,6 +210,7 @@ def create_sentiment_distribution_chart(df, title):
         values=sentiment_counts.values,
         names=sentiment_counts.index,
         title=title,
+        color=sentiment_counts.index,
         color_discrete_map={
             'positive': '#00ff00',  # Traffic Light Green
             'negative': '#ff0000',  # Traffic Light Red
@@ -218,6 +219,13 @@ def create_sentiment_distribution_chart(df, title):
     )
     
     fig.update_traces(textposition='inside', textinfo='percent+label')
+    
+    # Force color update to ensure traffic light colors are applied
+    fig.update_layout(
+        showlegend=True,
+        font=dict(size=12)
+    )
+    
     return fig
 
 def create_sentiment_bar_chart(df, title):
