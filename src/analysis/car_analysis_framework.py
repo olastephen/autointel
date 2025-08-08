@@ -51,6 +51,10 @@ from collections import Counter, defaultdict
 import re
 from datetime import datetime, timedelta
 import json
+import gc
+import psutil
+import os
+from typing import List, Dict, Any, Optional
 
 # Download NLTK data
 try:
@@ -69,7 +73,7 @@ class CarAnalysisFramework:
     def __init__(self, news_file='car_news_dataset.csv', reviews_file='car_reviews_dataset.csv',
                  use_database=True, news_table="car_news", reviews_table="car_reviews"):
         """
-        Initialize the analysis framework
+        Initialize the analysis framework with memory optimization
         
         Args:
             news_file (str): Path to car news CSV file (fallback)
@@ -86,6 +90,10 @@ class CarAnalysisFramework:
         self.car_news_df = None
         self.car_reviews_df = None
         
+        # Memory optimization settings
+        self.batch_size = 50  # Process data in smaller batches
+        self.max_memory_usage = 0.7  # Use max 70% of available memory
+        
         # Initialize data loader
         from src.data.data_loader import DataLoader
         self.data_loader = DataLoader(
@@ -95,6 +103,81 @@ class CarAnalysisFramework:
             news_table=news_table,
             reviews_table=reviews_table
         )
+        
+        # Initialize NLP components with fallbacks
+        self._init_nlp_components()
+        
+        print(f"🧠 Memory optimization: Batch size={self.batch_size}, Max memory={self.max_memory_usage*100}%")
+    
+    def _init_nlp_components(self):
+        """Initialize NLP components with memory-efficient fallbacks."""
+        # Basic stopwords fallback
+        self.stop_words = set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them', 'my', 'your', 'his', 'her', 'its', 'our', 'their', 'mine', 'yours', 'his', 'hers', 'ours', 'theirs'])
+        
+        try:
+            nltk_stopwords = set(stopwords.words('english'))
+            self.stop_words.update(nltk_stopwords)
+            print("✅ NLTK stopwords loaded")
+        except LookupError:
+            print("⚠️ Using fallback stopwords")
+        
+        # Initialize sentiment analyzer
+        try:
+            self.sentiment_analyzer = SentimentIntensityAnalyzer()
+            print("✅ VADER sentiment analyzer loaded")
+        except LookupError:
+            print("⚠️ VADER lexicon not found, using fallback sentiment")
+            self.sentiment_analyzer = None
+        
+        # Initialize lemmatizer
+        try:
+            self.lemmatizer = WordNetLemmatizer()
+            print("✅ WordNet lemmatizer loaded")
+        except LookupError:
+            print("⚠️ WordNet not found, using basic text processing")
+            self.lemmatizer = None
+    
+    def _check_memory_usage(self):
+        """Check if memory usage is within safe limits."""
+        try:
+            memory_percent = psutil.virtual_memory().percent / 100
+            if memory_percent > self.max_memory_usage:
+                print(f"⚠️ High memory usage: {memory_percent*100:.1f}%, forcing garbage collection")
+                gc.collect()
+                return False
+            return True
+        except:
+            # If psutil fails, assume memory is fine
+            return True
+    
+    def _process_in_batches(self, data: pd.DataFrame, process_func, **kwargs) -> List[Dict]:
+        """Process data in memory-efficient batches."""
+        results = []
+        total_batches = len(data) // self.batch_size + (1 if len(data) % self.batch_size else 0)
+        
+        for i in range(0, len(data), self.batch_size):
+            batch = data.iloc[i:i+self.batch_size]
+            batch_num = i // self.batch_size + 1
+            
+            print(f"📦 Processing batch {batch_num}/{total_batches} ({len(batch)} records)")
+            
+            # Check memory before processing
+            if not self._check_memory_usage():
+                print("⚠️ Memory pressure detected, processing smaller batch")
+                # Process in even smaller chunks
+                for j in range(0, len(batch), self.batch_size // 2):
+                    sub_batch = batch.iloc[j:j+self.batch_size//2]
+                    batch_results = process_func(sub_batch, **kwargs)
+                    results.extend(batch_results)
+                    gc.collect()
+            else:
+                batch_results = process_func(batch, **kwargs)
+                results.extend(batch_results)
+            
+            # Force garbage collection after each batch
+            gc.collect()
+        
+        return results
         
         # Initialize database config if using database
         if self.use_database:

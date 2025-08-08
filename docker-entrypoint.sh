@@ -95,6 +95,7 @@ EOF
 run_analysis() {
     echo "🔄 Executing car analysis framework..."
     echo "📈 This may take a few minutes for initial analysis..."
+    echo "🧠 Memory monitoring enabled..."
     
     # Ensure NLTK data is available
     ensure_nltk_data
@@ -102,33 +103,61 @@ run_analysis() {
     # Set PYTHONPATH to ensure imports work
     export PYTHONPATH=/app:$PYTHONPATH
     
-    # Run the analysis with error handling
+    # Monitor memory usage
+    echo "📊 Current memory usage:"
+    free -h
+    
+    # Run the analysis with enhanced error handling and memory monitoring
     python3 << 'EOF'
 import sys
 import traceback
 import os
+import gc
+import psutil
 
 # Add current directory to path
 sys.path.insert(0, '/app')
 
+def monitor_memory():
+    """Monitor and log memory usage"""
+    try:
+        memory = psutil.virtual_memory()
+        print(f"🧠 Memory: {memory.percent:.1f}% used ({memory.used // 1024 // 1024}MB / {memory.total // 1024 // 1024}MB)")
+        if memory.percent > 80:
+            print("⚠️  High memory usage detected!")
+            gc.collect()
+    except:
+        pass
+
 try:
     print("📊 Initializing Car Analysis Framework...")
+    monitor_memory()
+    
     from src.analysis.car_analysis_framework import CarAnalysisFramework
     
     print("🚀 Creating framework instance...")
+    monitor_memory()
     framework = CarAnalysisFramework()
     
     print("✅ Framework initialized successfully!")
     print("🔍 Running comprehensive analysis pipeline...")
+    monitor_memory()
     
-    # Run the full analysis
+    # Run the full analysis with memory monitoring
     framework.run_full_analysis()
     
     print("✅ Analysis completed successfully!")
     print("📊 Results stored in database and ready for dashboard.")
+    monitor_memory()
     
 except ImportError as e:
     print(f"⚠️  Import error: {e}")
+    print("📊 Continuing with dashboard startup...")
+    
+except MemoryError as e:
+    print(f"💥 Memory error: {e}")
+    print("🧠 Forcing garbage collection and continuing...")
+    gc.collect()
     print("📊 Continuing with dashboard startup...")
     
 except Exception as e:
@@ -139,6 +168,7 @@ except Exception as e:
     
 finally:
     print("🔄 Analysis phase completed.")
+    monitor_memory()
 EOF
 }
 
