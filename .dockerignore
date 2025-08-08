@@ -62,6 +62,9 @@ docker-compose*
 # Environment files (use Docker env vars instead)
 .env
 
+# Keep Streamlit config (remove from ignore)
+!.streamlit/
+
 # Test files
 test_*
 *_test.py

@@ -34,7 +34,10 @@ RUN python -m spacy download en_core_web_sm
 COPY . .
 
 # Create necessary directories
-RUN mkdir -p /app/logs /app/data
+RUN mkdir -p /app/logs /app/data /app/.streamlit
+
+# Ensure Streamlit configuration is in place
+COPY .streamlit/ /app/.streamlit/
 
 # Set permissions
 RUN chmod +x /app

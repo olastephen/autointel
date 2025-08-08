@@ -1501,8 +1501,9 @@ def display_ngram_analysis(df, title):
                         elif word_count == 3:
                             all_trigrams.append(ngram)
     
-    # Debug information for troubleshooting
-    if st.secrets.get("DEBUG_MODE", False):
+    # Debug information for troubleshooting (optional, controlled by environment variable)
+    import os
+    if os.getenv("DEBUG_MODE", "false").lower() == "true":
         st.write(f"Debug - Bigrams found: {len(all_bigrams)}")
         st.write(f"Debug - Trigrams found: {len(all_trigrams)}")
         if all_bigrams:
