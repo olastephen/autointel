@@ -14,6 +14,8 @@ import os
 import sys
 from datetime import datetime, timedelta
 from wordcloud import WordCloud
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend for Streamlit
 import matplotlib.pyplot as plt
 import seaborn as sns
 from collections import Counter
@@ -132,6 +134,34 @@ def parse_json_column(df, column_name):
     
     return parsed_data
 
+def parse_json_object_column(df, column_name):
+    """Parse JSON object columns (like keyword_counts, bigram_counts) with enhanced error handling"""
+    if column_name not in df.columns:
+        return []
+    
+    parsed_data = []
+    for value in df[column_name]:
+        if pd.isna(value) or value is None:
+            parsed_data.append({})
+        elif isinstance(value, str):
+            try:
+                # Try to parse as JSON object
+                parsed = json.loads(value)
+                parsed_data.append(parsed if isinstance(parsed, dict) else {})
+            except json.JSONDecodeError:
+                try:
+                    # Fallback: try to evaluate as Python dict
+                    import ast
+                    parsed = ast.literal_eval(value)
+                    parsed_data.append(parsed if isinstance(parsed, dict) else {})
+                except (ValueError, SyntaxError):
+                    # If all else fails, return empty dict
+                    parsed_data.append({})
+        else:
+            parsed_data.append(value if isinstance(value, dict) else {})
+    
+    return parsed_data
+
 def extract_brands_from_entities(entities_data):
     """Extract car brands from entity data"""
     brands = []
@@ -156,29 +186,84 @@ def extract_brands_from_entities(entities_data):
     
     return list(set(brands))
 
-def create_wordcloud(text_data, title):
-    """Create word cloud from text data"""
-    if not text_data:
+def create_wordcloud_from_frequencies(frequency_dict, title):
+    """Create word cloud from frequency dictionary"""
+    if not frequency_dict:
+        print(f"Wordcloud: No frequency data provided for {title}")
         return None
     
     try:
-        # Clean and combine all text
-        cleaned_texts = []
-        for text in text_data:
-            if text and str(text).strip():
-                # Remove special characters and clean the text
-                clean_text = str(text).strip().replace(':', ' ').replace('-', ' ')
-                if clean_text:
-                    cleaned_texts.append(clean_text)
+        print(f"Wordcloud: Creating frequency-based wordcloud for {title} with {len(frequency_dict)} keywords")
+        print(f"Wordcloud: Sample frequencies: {dict(list(frequency_dict.items())[:5])}")
         
-        if not cleaned_texts:
-            return None
+        # Create word cloud from frequency dictionary
+        wordcloud = WordCloud(
+            width=800, 
+            height=400, 
+            background_color='white',
+            colormap='viridis',
+            max_words=100,
+            min_font_size=8,
+            max_font_size=120,
+            relative_scaling=1.0,
+            collocations=False,
+            regexp=r'\b\w+\b',
+            normalize_plurals=True,
+            prefer_horizontal=0.7
+        ).generate_from_frequencies(frequency_dict)
+        
+        # Create matplotlib figure
+        fig, ax = plt.subplots(figsize=(12, 6))
+        ax.imshow(wordcloud, interpolation='bilinear')
+        ax.axis('off')
+        ax.set_title(title, fontsize=16, fontweight='bold', pad=20)
+        plt.tight_layout()
+        
+        print(f"Wordcloud: Successfully created frequency-based wordcloud for {title}")
+        return fig
+        
+    except Exception as e:
+        print(f"Error creating frequency-based word cloud for {title}: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+def create_wordcloud(text_data, title):
+    """Create word cloud from text data"""
+    if not text_data:
+        print(f"Wordcloud: No text data provided for {title}")
+        return None
     
-        # Join all text for word cloud
-        all_text = ' '.join(cleaned_texts)
+    try:
+        # Handle both single strings and lists of strings
+        if isinstance(text_data, str):
+            # Single string - use it directly
+            all_text = text_data
+        else:
+            # List of strings - clean and combine them
+            cleaned_texts = []
+            for text in text_data:
+                if text and str(text).strip():
+                    # Remove special characters and clean the text
+                    clean_text = str(text).strip().replace(':', ' ').replace('-', ' ')
+                    if clean_text:
+                        cleaned_texts.append(clean_text)
+            
+            if not cleaned_texts:
+                print(f"Wordcloud: No cleaned texts for {title}")
+                return None
+        
+            # Join all text for word cloud
+            all_text = ' '.join(cleaned_texts)
         
         if len(all_text.strip()) < 3:  # Need at least 3 characters
+            print(f"Wordcloud: Text too short for {title}: '{all_text[:50]}...'")
             return None
+        
+        print(f"Wordcloud: Creating for {title} with {len(all_text)} characters")
+        print(f"Wordcloud: Sample text: '{all_text[:100]}...'")
+        print(f"Wordcloud: Text contains {len(all_text.split())} words")
+        print(f"Wordcloud: First 10 words: {all_text.split()[:10]}")
         
         # Create word cloud with better settings
         wordcloud = WordCloud(
@@ -186,11 +271,14 @@ def create_wordcloud(text_data, title):
             height=400, 
             background_color='white',
             colormap='viridis',
-            max_words=50,
-            min_font_size=10,
-            max_font_size=100,
-            relative_scaling=0.5,
-            collocations=False  # Avoid pairing words
+            max_words=100,  # Increased from 50
+            min_font_size=8,  # Reduced from 10
+            max_font_size=120,  # Increased from 100
+            relative_scaling=1.0,  # Changed from 0.5 for better word separation
+            collocations=False,  # Avoid pairing words
+            regexp=r'\b\w+\b',  # Ensure we only match complete words
+            normalize_plurals=True,  # Handle plural forms
+            prefer_horizontal=0.7  # Mix of horizontal and vertical text
         ).generate(all_text)
         
         # Create matplotlib figure
@@ -200,10 +288,13 @@ def create_wordcloud(text_data, title):
         ax.set_title(title, fontsize=16, fontweight='bold', pad=20)
         plt.tight_layout()
         
+        print(f"Wordcloud: Successfully created for {title}")
         return fig
         
     except Exception as e:
-        print(f"Error creating word cloud: {e}")
+        print(f"Error creating word cloud for {title}: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 def create_sentiment_distribution_chart(df, title):
@@ -610,18 +701,16 @@ def create_enhanced_time_series_analysis(df, market_data, title):
     # Convert date back to datetime for plotting
     merged_data['date'] = pd.to_datetime(merged_data['date'])
     
-    # Create subplots
+    # Create subplots - Removed interest rate, focus on sentiment vs consumer confidence
     fig = make_subplots(
-        rows=4, cols=1,
+        rows=3, cols=1,
         subplot_titles=[
             f"{title} - Sentiment Trend",
-            "Interest Rates (%)",
             "Consumer Confidence Index",
-            "Correlation Analysis"
+            "Sentiment vs Consumer Confidence Correlation"
         ],
-        vertical_spacing=0.08,
+        vertical_spacing=0.1,
         specs=[[{"secondary_y": False}],
-               [{"secondary_y": False}],
                [{"secondary_y": False}],
                [{"secondary_y": True}]]
     )
@@ -638,18 +727,6 @@ def create_enhanced_time_series_analysis(df, market_data, title):
         row=1, col=1
     )
     
-    # Plot interest rates
-    fig.add_trace(
-        go.Scatter(
-            x=merged_data['date'],
-            y=merged_data['interest_rate'],
-            mode='lines',
-            name='Interest Rate',
-            line=dict(color='#ff0000', width=2)
-        ),
-        row=2, col=1
-    )
-    
     # Plot consumer confidence
     fig.add_trace(
         go.Scatter(
@@ -659,10 +736,10 @@ def create_enhanced_time_series_analysis(df, market_data, title):
             name='Consumer Confidence',
             line=dict(color='#ffff00', width=2)
         ),
-        row=3, col=1
+        row=2, col=1
     )
     
-    # Plot correlation (sentiment vs interest rate)
+    # Plot correlation (sentiment vs consumer confidence)
     fig.add_trace(
         go.Scatter(
             x=merged_data['date'],
@@ -671,38 +748,37 @@ def create_enhanced_time_series_analysis(df, market_data, title):
             name='Sentiment',
             line=dict(color='#00ff00', width=2)
         ),
-        row=4, col=1
+        row=3, col=1
     )
     
     fig.add_trace(
         go.Scatter(
             x=merged_data['date'],
-            y=merged_data['interest_rate'],
+            y=merged_data['consumer_confidence'],
             mode='lines',
-            name='Interest Rate',
-            line=dict(color='#ff0000', width=2, dash='dash'),
+            name='Consumer Confidence',
+            line=dict(color='#ffff00', width=2, dash='dash'),
             yaxis='y2'
         ),
-        row=4, col=1,
+        row=3, col=1,
         secondary_y=True
     )
     
     # Update layout
     fig.update_layout(
-        height=800,
-        title_text=f"{title} - Consumer Sentiment vs Market Data Analysis",
+        height=700,
+        title_text=f"{title} - Consumer Sentiment vs Consumer Confidence Analysis",
         showlegend=False
     )
     
     # Update y-axes
     fig.update_yaxes(title_text="Sentiment Score", row=1, col=1)
-    fig.update_yaxes(title_text="Interest Rate (%)", row=2, col=1)
-    fig.update_yaxes(title_text="Confidence Index", row=3, col=1)
-    fig.update_yaxes(title_text="Sentiment Score", row=4, col=1)
-    fig.update_yaxes(title_text="Interest Rate (%)", row=4, col=1, secondary_y=True)
+    fig.update_yaxes(title_text="Confidence Index", row=2, col=1)
+    fig.update_yaxes(title_text="Sentiment Score", row=3, col=1)
+    fig.update_yaxes(title_text="Consumer Confidence Index", row=3, col=1, secondary_y=True)
     
     # Update x-axes
-    fig.update_xaxes(title_text="Date", row=4, col=1)
+    fig.update_xaxes(title_text="Date", row=3, col=1)
     
     return fig, merged_data
 
@@ -715,62 +791,173 @@ def display_keyword_analysis(df, title):
     if not keywords_data:
         return
     
-    # Flatten keywords and count frequencies
-    all_keywords = []
-    for keywords_list in keywords_data:
-        if isinstance(keywords_list, list):
-            all_keywords.extend(keywords_list)
+    # Check if we have document-level keyword counts (new approach)
+    has_doc_counts = 'keyword_counts' in df.columns
     
-    if not all_keywords:
-        return
-    
-    keyword_counts = pd.Series(all_keywords).value_counts().head(20)
+    if has_doc_counts:
+        # Use document-level keyword counts for meaningful frequency analysis
+        keyword_counts_data = parse_json_object_column(df, 'keyword_counts')
+        
+        # Aggregate keyword frequencies across documents
+        keyword_frequencies = {}
+        for doc_counts in keyword_counts_data:
+            if isinstance(doc_counts, dict):
+                for keyword, count in doc_counts.items():
+                    keyword_frequencies[keyword] = keyword_frequencies.get(keyword, 0) + count
+        
+        # Get top keywords by frequency
+        if keyword_frequencies:
+            sorted_keywords = sorted(keyword_frequencies.items(), key=lambda x: x[1], reverse=True)
+            top_keywords = sorted_keywords[:20]
+            
+            # Create meaningful frequency data
+            plot_df = pd.DataFrame({
+                'Keyword': [kw[0] for kw in top_keywords],
+                'Frequency': [kw[1] for kw in top_keywords]
+            })
+            
+            # Create word cloud from all keywords with their frequencies
+            # Use WordCloud's built-in frequency support instead of text repetition
+            wordcloud_frequencies = {kw[0]: kw[1] for kw in sorted_keywords[:50]}
+            print(f"Keyword Analysis: Generated wordcloud frequencies for {len(wordcloud_frequencies)} keywords")
+            print(f"Keyword Analysis: Sample frequencies: {dict(list(wordcloud_frequencies.items())[:5])}")
+            
+            # For fallback display, still create text
+            wordcloud_text = ' '.join([kw[0] for kw in sorted_keywords[:50]])
+            
+        else:
+            st.warning("No keyword frequency data found")
+            return
+    else:
+        # Fallback to old approach (global keywords)
+        st.info("⚠️ Using global keyword list. Run analysis pipeline for document-level frequencies.")
+        
+        # Flatten keywords and count frequencies
+        all_keywords = []
+        for keywords_list in keywords_data:
+            if isinstance(keywords_list, list):
+                all_keywords.extend(keywords_list)
+        
+        if not all_keywords:
+            return
+        
+        keyword_counts = pd.Series(all_keywords).value_counts().head(20)
+        
+        # Create frequency data (this will show same frequency for all)
+        plot_df = pd.DataFrame({
+            'Keyword': keyword_counts.index,
+            'Frequency': keyword_counts.values
+        })
+        
+        # Create word cloud from all keywords
+        wordcloud_text = ' '.join(all_keywords)
+        print(f"Keyword Analysis (fallback): Generated wordcloud text with {len(wordcloud_text)} characters")
+        print(f"Keyword Analysis (fallback): Sample text: '{wordcloud_text[:100]}...'")
+        
+        # Create frequency dict for fallback case too
+        wordcloud_frequencies = {kw: 1 for kw in all_keywords[:50]}
     
     # Create tabs for different analyses
     tab1, tab2 = st.tabs(["🔑 Top Keywords", "🔗 Keyword Correlations"])
     
     with tab1:
         # Create word cloud
-        wordcloud_fig = create_wordcloud(all_keywords, f"{title} - Word Cloud")
-        if wordcloud_fig:
-            st.pyplot(wordcloud_fig)
+        print(f"Keyword Analysis: Creating wordcloud with text length: {len(wordcloud_text)}")
+        
+        try:
+            # Always use frequency-based wordcloud for better results
+            wordcloud_fig = create_wordcloud_from_frequencies(wordcloud_frequencies, f"{title} - Word Cloud")
+                
+            if wordcloud_fig:
+                st.pyplot(wordcloud_fig)
+            else:
+                st.warning("Could not generate word cloud")
+                print(f"Keyword Analysis: Wordcloud creation failed for {title}")
+                
+                # Fallback: show the top keywords as a simple list
+                st.info("📝 Top Keywords (Wordcloud unavailable):")
+                if has_doc_counts and keyword_frequencies:
+                    top_10 = sorted(keyword_frequencies.items(), key=lambda x: x[1], reverse=True)[:10]
+                    for i, (keyword, freq) in enumerate(top_10):
+                        st.write(f"{i+1}. **{keyword}** - {freq} occurrences")
+                else:
+                    # Fallback for old approach
+                    for i, keyword in enumerate(plot_df['Keyword'].head(10)):
+                        st.write(f"{i+1}. **{keyword}**")
+                        
+        except Exception as e:
+            st.error(f"Error creating wordcloud: {e}")
+            print(f"Keyword Analysis: Exception in wordcloud creation: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Fallback display
+            st.info("📝 Top Keywords (Wordcloud error):")
+            if has_doc_counts and keyword_frequencies:
+                top_10 = sorted(keyword_frequencies.items(), key=lambda x: x[1], reverse=True)[:10]
+                for i, (keyword, freq) in enumerate(top_10):
+                    st.write(f"{i+1}. **{keyword}** - {freq} occurrences")
+            else:
+                for i, keyword in enumerate(plot_df['Keyword'].head(10)):
+                    st.write(f"{i+1}. **{keyword}**")
     
     # Create bar chart
-    plot_df = pd.DataFrame({
-        'Keyword': keyword_counts.index,
-        'Frequency': keyword_counts.values
-    })
-    
     fig = px.bar(
         plot_df,
         x='Frequency',
         y='Keyword',
         orientation='h',
-        title=f"{title} - Top Keywords",
+        title=f"{title} - Top Keywords by Frequency",
         labels={'x': 'Frequency', 'y': 'Keywords'},
         color='Frequency',
-            color_continuous_scale='blues'
+        color_continuous_scale='blues'
     )
     
     st.plotly_chart(fig, use_container_width=True)
     
+    # Show frequency statistics
+    if has_doc_counts and keyword_frequencies:
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Keywords", len(keyword_frequencies))
+        with col2:
+            st.metric("Most Frequent", f"{plot_df.iloc[0]['Keyword']}")
+        with col3:
+            st.metric("Total Occurrences", sum(keyword_frequencies.values()))
+    
     with tab2:
         st.subheader("🔗 Keyword Co-occurrence Analysis")
         
-        # Calculate keyword co-occurrence
-        keyword_cooccurrence = {}
-        top_keywords = keyword_counts.head(15).index.tolist()
-        
-        for keywords_list in keywords_data:
-            if isinstance(keywords_list, list):
-                # Get intersection with top keywords
-                doc_keywords = [kw for kw in keywords_list if kw in top_keywords]
-                
-                # Calculate co-occurrence for this document
-                for i, kw1 in enumerate(doc_keywords):
-                    for kw2 in doc_keywords[i+1:]:
-                        pair = tuple(sorted([kw1, kw2]))
-                        keyword_cooccurrence[pair] = keyword_cooccurrence.get(pair, 0) + 1
+        if has_doc_counts and keyword_counts_data:
+            # Calculate keyword co-occurrence using document-level data
+            keyword_cooccurrence = {}
+            top_keywords = [kw[0] for kw in sorted_keywords[:15]]
+            
+            for doc_counts in keyword_counts_data:
+                if isinstance(doc_counts, dict):
+                    # Get keywords that appear in this document
+                    doc_keywords = [kw for kw in doc_counts.keys() if kw in top_keywords]
+                    
+                    # Calculate co-occurrence for this document
+                    for i, kw1 in enumerate(doc_keywords):
+                        for kw2 in doc_keywords[i+1:]:
+                            pair = tuple(sorted([kw1, kw2]))
+                            keyword_cooccurrence[pair] = keyword_cooccurrence.get(pair, 0) + 1
+        else:
+            # Fallback to old approach
+            keyword_cooccurrence = {}
+            top_keywords = plot_df['Keyword'].head(15).tolist()
+            
+            for keywords_list in keywords_data:
+                if isinstance(keywords_list, list):
+                    # Get intersection with top keywords
+                    doc_keywords = [kw for kw in keywords_list if kw in top_keywords]
+                    
+                    # Calculate co-occurrence for this document
+                    for i, kw1 in enumerate(doc_keywords):
+                        for kw2 in doc_keywords[i+1:]:
+                            pair = tuple(sorted([kw1, kw2]))
+                            keyword_cooccurrence[pair] = keyword_cooccurrence.get(pair, 0) + 1
         
         if keyword_cooccurrence:
             # Create co-occurrence matrix
@@ -779,7 +966,10 @@ def display_keyword_analysis(df, title):
                 row = []
                 for kw2 in top_keywords:
                     if kw1 == kw2:
-                        row.append(keyword_counts.get(kw1, 0))
+                        if has_doc_counts:
+                            row.append(keyword_frequencies.get(kw1, 0))
+                        else:
+                            row.append(1)  # Fallback value
                     else:
                         pair = tuple(sorted([kw1, kw2]))
                         row.append(keyword_cooccurrence.get(pair, 0))
@@ -791,7 +981,7 @@ def display_keyword_analysis(df, title):
                 x=top_keywords,
                 y=top_keywords,
                 title=f"{title} - Keyword Co-occurrence Matrix",
-                color_continuous_scale='RdYlBu_r',  # Red-Yellow-Blue (intuitive: red=high, blue=low)
+                color_continuous_scale='RdYlBu_r',
                 aspect='auto'
             )
             
@@ -805,13 +995,11 @@ def display_keyword_analysis(df, title):
             
             # Show top co-occurring pairs
             st.subheader("🏆 Top Keyword Pairs")
-            top_pairs = sorted(keyword_cooccurrence.items(), key=lambda x: x[1], reverse=True)[:10]
-            
-            for i, (pair, count) in enumerate(top_pairs):
-                kw1, kw2 = pair
-                st.write(f"{i+1}. **{kw1}** ↔ **{kw2}**: {count} co-occurrences")
+            sorted_pairs = sorted(keyword_cooccurrence.items(), key=lambda x: x[1], reverse=True)
+            for i, (pair, count) in enumerate(sorted_pairs[:10]):
+                st.write(f"{i+1}. {' + '.join(pair)}: {count} documents")
         else:
-            st.info("No keyword co-occurrences found")
+            st.info("No keyword co-occurrence data available")
 
 def display_topic_analysis(df, title):
     """Display topic analysis results with enhanced visualizations"""
@@ -1472,35 +1660,68 @@ def display_ngram_analysis(df, title):
     all_bigrams = []
     all_trigrams = []
     
-    if 'top_bigrams' in df.columns:
-        bigrams_data = parse_json_column(df, 'top_bigrams')
-        for bigrams_list in bigrams_data:
-            if isinstance(bigrams_list, list):
-                all_bigrams.extend([ngram for ngram in bigrams_list if isinstance(ngram, str)])
-            elif isinstance(bigrams_list, str):
-                all_bigrams.append(bigrams_list)
+    # Check if we have document-level n-gram counts (new approach)
+    has_doc_counts = 'bigram_counts' in df.columns or 'trigram_counts' in df.columns
     
-    if 'top_trigrams' in df.columns:
-        trigrams_data = parse_json_column(df, 'top_trigrams')
-        for trigrams_list in trigrams_data:
-            if isinstance(trigrams_list, list):
-                all_trigrams.extend([ngram for ngram in trigrams_list if isinstance(ngram, str)])
-            elif isinstance(trigrams_list, str):
-                all_trigrams.append(trigrams_list)
+    if has_doc_counts:
+        # Use document-level n-gram counts for meaningful frequency analysis
+        bigram_frequencies = {}
+        trigram_frequencies = {}
+        
+        if 'bigram_counts' in df.columns:
+            bigram_counts_data = parse_json_object_column(df, 'bigram_counts')
+            for doc_counts in bigram_counts_data:
+                if isinstance(doc_counts, dict):
+                    for bigram, count in doc_counts.items():
+                        bigram_frequencies[bigram] = bigram_frequencies.get(bigram, 0) + count
+        
+        if 'trigram_counts' in df.columns:
+            trigram_counts_data = parse_json_object_column(df, 'trigram_counts')
+            for doc_counts in trigram_counts_data:
+                if isinstance(doc_counts, dict):
+                    for trigram, count in doc_counts.items():
+                        trigram_frequencies[trigram] = trigram_frequencies.get(trigram, 0) + count
+        
+        # Get top n-grams by frequency
+        if bigram_frequencies:
+            sorted_bigrams = sorted(bigram_frequencies.items(), key=lambda x: x[1], reverse=True)
+            all_bigrams = [bg[0] for bg in sorted_bigrams[:15]]
+        
+        if trigram_frequencies:
+            sorted_trigrams = sorted(trigram_frequencies.items(), key=lambda x: x[1], reverse=True)
+            all_trigrams = [tg[0] for tg in sorted_trigrams[:15]]
     
-    # Fall back to old combined column if new columns don't exist
-    ngrams_data = []
-    if not all_bigrams and not all_trigrams and 'top_ngrams' in df.columns:
-        ngrams_data = parse_json_column(df, 'top_ngrams')
-        for ngrams_list in ngrams_data:
-            if isinstance(ngrams_list, list):
-                for ngram in ngrams_list:
-                    if isinstance(ngram, str):
-                        word_count = len(ngram.split())
-                        if word_count == 2:
-                            all_bigrams.append(ngram)
-                        elif word_count == 3:
-                            all_trigrams.append(ngram)
+    # Fallback to old approach if new columns don't exist
+    if not all_bigrams and not all_trigrams:
+        if 'top_bigrams' in df.columns:
+            bigrams_data = parse_json_column(df, 'top_bigrams')
+            for bigrams_list in bigrams_data:
+                if isinstance(bigrams_list, list):
+                    all_bigrams.extend([ngram for ngram in bigrams_list if isinstance(ngram, str)])
+                elif isinstance(bigrams_list, str):
+                    all_bigrams.append(bigrams_list)
+        
+        if 'top_trigrams' in df.columns:
+            trigrams_data = parse_json_column(df, 'top_trigrams')
+            for trigrams_list in trigrams_data:
+                if isinstance(trigrams_list, list):
+                    all_trigrams.extend([ngram for ngram in trigrams_list if isinstance(ngram, str)])
+                elif isinstance(trigrams_list, str):
+                    all_trigrams.append(trigrams_list)
+        
+        # Fall back to old combined column if new columns don't exist
+        ngrams_data = []
+        if not all_bigrams and not all_trigrams and 'top_ngrams' in df.columns:
+            ngrams_data = parse_json_column(df, 'top_ngrams')
+            for ngrams_list in ngrams_data:
+                if isinstance(ngrams_list, list):
+                    for ngram in ngrams_list:
+                        if isinstance(ngram, str):
+                            word_count = len(ngram.split())
+                            if word_count == 2:
+                                all_bigrams.append(ngram)
+                            elif word_count == 3:
+                                all_trigrams.append(ngram)
     
     # Debug information for troubleshooting (optional, controlled by environment variable)
     import os
@@ -1520,84 +1741,98 @@ def display_ngram_analysis(df, title):
     # Display statistics
     st.info(f"Found {len(all_bigrams)} bigrams and {len(all_trigrams)} trigrams")
     
+    if has_doc_counts:
+        st.success("✅ Using document-level frequency data for meaningful analysis")
+    else:
+        st.info("⚠️ Using global n-gram lists. Run analysis pipeline for document-level frequencies.")
+    
     # Display Bigrams
     if all_bigrams:
         st.subheader(f"{title} - Top Bigrams")
-        bigram_counts = pd.Series(all_bigrams).value_counts().head(15)
         
-        plot_df = pd.DataFrame({
-            'Bigram': bigram_counts.index,
-            'Frequency': bigram_counts.values
-        })
+        if has_doc_counts and bigram_frequencies:
+            # Use document-level frequencies
+            sorted_bigrams = sorted(bigram_frequencies.items(), key=lambda x: x[1], reverse=True)[:15]
+            plot_df = pd.DataFrame({
+                'Bigram': [bg[0] for bg in sorted_bigrams],
+                'Frequency': [bg[1] for bg in sorted_bigrams]
+            })
+        else:
+            # Fallback to old approach
+            bigram_counts = pd.Series(all_bigrams).value_counts().head(15)
+            plot_df = pd.DataFrame({
+                'Bigram': bigram_counts.index,
+                'Frequency': bigram_counts.values
+            })
         
         fig = px.bar(
             plot_df,
             x='Frequency',
             y='Bigram',
             orientation='h',
-            title=f"{title} - Top Bigrams",
+            title=f"{title} - Top Bigrams by Frequency",
             labels={'x': 'Frequency', 'y': 'Bigrams'},
             color='Frequency',
             color_continuous_scale='viridis'
         )
         
         st.plotly_chart(fig, use_container_width=True)
+        
+        # Show frequency statistics for bigrams
+        if has_doc_counts and bigram_frequencies:
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Bigrams", len(bigram_frequencies))
+            with col2:
+                st.metric("Most Frequent", plot_df.iloc[0]['Bigram'])
+            with col3:
+                st.metric("Total Occurrences", sum(bigram_frequencies.values()))
     else:
         st.warning("No bigrams found")
     
     # Display Trigrams
     if all_trigrams:
         st.subheader(f"{title} - Top Trigrams")
-        trigram_counts = pd.Series(all_trigrams).value_counts().head(15)
         
-        plot_df = pd.DataFrame({
-            'Trigram': trigram_counts.index,
-            'Frequency': trigram_counts.values
-        })
+        if has_doc_counts and trigram_frequencies:
+            # Use document-level frequencies
+            sorted_trigrams = sorted(trigram_frequencies.items(), key=lambda x: x[1], reverse=True)[:15]
+            plot_df = pd.DataFrame({
+                'Trigram': [tg[0] for tg in sorted_trigrams],
+                'Frequency': [tg[1] for tg in sorted_trigrams]
+            })
+        else:
+            # Fallback to old approach
+            trigram_counts = pd.Series(all_trigrams).value_counts().head(15)
+            plot_df = pd.DataFrame({
+                'Trigram': trigram_counts.index,
+                'Frequency': trigram_counts.values
+            })
         
         fig = px.bar(
             plot_df,
             x='Frequency',
             y='Trigram',
             orientation='h',
-            title=f"{title} - Top Trigrams",
+            title=f"{title} - Top Trigrams by Frequency",
             labels={'x': 'Frequency', 'y': 'Trigrams'},
             color='Frequency',
             color_continuous_scale='plasma'
         )
         
         st.plotly_chart(fig, use_container_width=True)
+        
+        # Show frequency statistics for trigrams
+        if has_doc_counts and trigram_frequencies:
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Trigrams", len(trigram_frequencies))
+            with col2:
+                st.metric("Most Frequent", plot_df.iloc[0]['Trigram'])
+            with col3:
+                st.metric("Total Occurrences", sum(trigram_frequencies.values()))
     else:
         st.warning("No trigrams found")
-    
-    # Show sample n-grams
-    st.subheader(f"{title} - Sample N-grams")
-    sample_ngrams = []
-    
-    # Use the appropriate data source for sample display
-    if 'top_ngrams' in df.columns:
-        sample_data = parse_json_column(df, 'top_ngrams')
-    elif 'top_bigrams' in df.columns or 'top_trigrams' in df.columns:
-        # Combine bigrams and trigrams for sample display
-        sample_data = []
-        if 'top_bigrams' in df.columns:
-            bigrams_data = parse_json_column(df, 'top_bigrams')
-            sample_data.extend(bigrams_data[:3])  # First 3 records
-        if 'top_trigrams' in df.columns:
-            trigrams_data = parse_json_column(df, 'top_trigrams')
-            sample_data.extend(trigrams_data[:2])  # First 2 records
-    else:
-        sample_data = []
-    
-    for i, ngrams_list in enumerate(sample_data[:5]):  # Show first 5
-        if isinstance(ngrams_list, list) and ngrams_list:
-            sample_ngrams.append(f"**Record {i+1}:** {', '.join(ngrams_list[:5])}")
-    
-    if sample_ngrams:
-        for ngram_sample in sample_ngrams:
-            st.write(ngram_sample)
-    else:
-        st.write("No sample n-grams to display")
 
 def apply_filters(df, filters):
     """Apply filters to dataframe"""
@@ -2060,18 +2295,53 @@ def main():
                 avg_length = filtered_reviews['review_length'].mean()
                 st.metric("Average Review Length", f"{avg_length:.0f} characters")
             
-            # Correlation heatmap
-            numerical_cols = filtered_reviews.select_dtypes(include=[np.number]).columns
-            if len(numerical_cols) > 1:
-                corr_matrix = filtered_reviews[numerical_cols].corr()
+            # Correlation heatmap - Only show rating, price, and sentiment score
+            target_cols = ['rating', 'price', 'sentiment_score']
+            available_cols = [col for col in target_cols if col in filtered_reviews.columns]
+            
+            if len(available_cols) > 1:
+                # Filter data to only include the target columns
+                correlation_data = filtered_reviews[available_cols].copy()
                 
-                fig = px.imshow(
-                    corr_matrix,
-                    title="Correlation Heatmap",
-                    color_continuous_scale='RdBu',
-                    aspect='auto'
-                )
-                st.plotly_chart(fig, use_container_width=True)
+                # Remove any rows with NaN values for clean correlation analysis
+                correlation_data = correlation_data.dropna()
+                
+                if len(correlation_data) > 1:
+                    corr_matrix = correlation_data.corr()
+                    
+                    # Create the correlation heatmap
+                    fig = px.imshow(
+                        corr_matrix,
+                        title="Correlation Heatmap - Rating, Price & Sentiment",
+                        color_continuous_scale='RdBu',
+                        aspect='auto',
+                        text_auto=True,  # Show correlation values on the heatmap
+                        labels=dict(x="Features", y="Features", color="Correlation")
+                    )
+                    
+                    # Update layout for better readability
+                    fig.update_layout(
+                        xaxis_title="Features",
+                        yaxis_title="Features",
+                        height=500
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Show correlation insights
+                    st.subheader("📊 Correlation Insights")
+                    
+                    # Display individual correlation pairs
+                    for i, col1 in enumerate(available_cols):
+                        for j, col2 in enumerate(available_cols):
+                            if i < j:  # Only show upper triangle to avoid duplicates
+                                corr_value = corr_matrix.loc[col1, col2]
+                                st.write(f"**{col1.replace('_', ' ').title()} vs {col2.replace('_', ' ').title()}**: {corr_value:.3f}")
+                else:
+                    st.warning("Not enough data points for correlation analysis after removing NaN values.")
+            else:
+                st.warning("Need at least 2 of the following columns for correlation analysis: rating, price, sentiment_score")
+                st.info("Available columns: " + ", ".join(filtered_reviews.columns.tolist()))
         else:
             st.info("Correlation analysis is available for reviews data only.")
     
@@ -2084,9 +2354,8 @@ def main():
             market_data = load_market_data()
         
         # Create tabs for different analyses
-        time_tab1, time_tab2, time_tab3 = st.tabs([
+        time_tab1, time_tab2 = st.tabs([
             "📈 Basic Timeline", 
-            "🏢 Market Correlation", 
             "📊 Car Dependency Analysis"
         ])
         
@@ -2113,111 +2382,6 @@ def main():
                 st.plotly_chart(fig, use_container_width=True)
         
         with time_tab2:
-            st.subheader("🏢 Consumer Sentiment vs Market Data")
-            st.info("📊 **Analysis**: Correlating interest rates, consumer confidence, and news sentiment to predict trends")
-            
-            if data_type == "📊 Both Datasets":
-                # Enhanced analysis for both datasets
-                if len(filtered_news) > 0:
-                    st.subheader("📰 News Sentiment vs Economic Indicators")
-                    enhanced_fig, correlation_data = create_enhanced_time_series_analysis(filtered_news, market_data, "News")
-                    if enhanced_fig:
-                        st.plotly_chart(enhanced_fig, use_container_width=True)
-                        
-                        # Calculate and display correlations
-                        if correlation_data is not None and len(correlation_data) > 10:
-                            sentiment_interest_corr = correlation_data['avg_sentiment'].corr(correlation_data['interest_rate'])
-                            sentiment_confidence_corr = correlation_data['avg_sentiment'].corr(correlation_data['consumer_confidence'])
-                            
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                color = "🔴" if sentiment_interest_corr < -0.3 else "🟡" if sentiment_interest_corr < 0.3 else "🟢"
-                                st.metric(
-                                    "📊 Sentiment vs Interest Rate", 
-                                    f"{sentiment_interest_corr:.3f} {color}",
-                                    help="Negative correlation suggests higher interest rates lead to negative sentiment"
-                                )
-                            with col2:
-                                color = "🟢" if sentiment_confidence_corr > 0.3 else "🟡" if sentiment_confidence_corr > -0.3 else "🔴"
-                                st.metric(
-                                    "📊 Sentiment vs Consumer Confidence", 
-                                    f"{sentiment_confidence_corr:.3f} {color}",
-                                    help="Positive correlation suggests higher confidence aligns with positive sentiment"
-                                )
-                
-                if len(filtered_reviews) > 0:
-                    st.subheader("⭐ Reviews Sentiment vs Economic Indicators")
-                    enhanced_fig, correlation_data = create_enhanced_time_series_analysis(filtered_reviews, market_data, "Reviews")
-                    if enhanced_fig:
-                        st.plotly_chart(enhanced_fig, use_container_width=True)
-                        
-                        # Calculate and display correlations
-                        if correlation_data is not None and len(correlation_data) > 10:
-                            sentiment_interest_corr = correlation_data['avg_sentiment'].corr(correlation_data['interest_rate'])
-                            sentiment_confidence_corr = correlation_data['avg_sentiment'].corr(correlation_data['consumer_confidence'])
-                            
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                color = "🔴" if sentiment_interest_corr < -0.3 else "🟡" if sentiment_interest_corr < 0.3 else "🟢"
-                                st.metric(
-                                    "📊 Sentiment vs Interest Rate", 
-                                    f"{sentiment_interest_corr:.3f} {color}",
-                                    help="Negative correlation suggests higher interest rates lead to negative sentiment"
-                                )
-                            with col2:
-                                color = "🟢" if sentiment_confidence_corr > 0.3 else "🟡" if sentiment_confidence_corr > -0.3 else "🔴"
-                                st.metric(
-                                    "📊 Sentiment vs Consumer Confidence", 
-                                    f"{sentiment_confidence_corr:.3f} {color}",
-                                    help="Positive correlation suggests higher confidence aligns with positive sentiment"
-                                )
-            else:
-                # Enhanced analysis for single dataset
-                enhanced_fig, correlation_data = create_enhanced_time_series_analysis(current_df, market_data, df_name)
-                if enhanced_fig:
-                    st.plotly_chart(enhanced_fig, use_container_width=True)
-                    
-                    # Calculate and display correlations
-                    if correlation_data is not None and len(correlation_data) > 10:
-                        sentiment_interest_corr = correlation_data['avg_sentiment'].corr(correlation_data['interest_rate'])
-                        sentiment_confidence_corr = correlation_data['avg_sentiment'].corr(correlation_data['consumer_confidence'])
-                        
-                        # Key insights
-                        st.subheader("🔍 Key Insights")
-                        
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            color = "🔴" if sentiment_interest_corr < -0.3 else "🟡" if sentiment_interest_corr < 0.3 else "🟢"
-                            st.metric(
-                                "📊 Sentiment vs Interest Rate", 
-                                f"{sentiment_interest_corr:.3f} {color}",
-                                help="Negative correlation suggests higher interest rates lead to negative sentiment"
-                            )
-                        with col2:
-                            color = "🟢" if sentiment_confidence_corr > 0.3 else "🟡" if sentiment_confidence_corr > -0.3 else "🔴"
-                            st.metric(
-                                "📊 Sentiment vs Consumer Confidence", 
-                                f"{sentiment_confidence_corr:.3f} {color}",
-                                help="Positive correlation suggests higher confidence aligns with positive sentiment"
-                            )
-                        with col3:
-                            avg_sentiment = correlation_data['avg_sentiment'].mean()
-                            color = "🟢" if avg_sentiment > 0.1 else "🔴" if avg_sentiment < -0.1 else "🟡"
-                            st.metric(
-                                "📊 Average Sentiment", 
-                                f"{avg_sentiment:.3f} {color}",
-                                help="Overall sentiment trend in the analyzed period"
-                            )
-                        
-                        # Interpretation
-                        if sentiment_interest_corr < -0.3:
-                            st.success("✅ **Finding**: Higher interest rates appear to negatively affect consumer sentiment in car reviews, supporting economic theory.")
-                        elif sentiment_interest_corr > 0.3:
-                            st.warning("⚠️ **Finding**: Positive correlation between interest rates and sentiment - unusual pattern worth investigating.")
-                        else:
-                            st.info("ℹ️ **Finding**: Weak correlation between interest rates and sentiment - other factors may be more influential.")
-        
-        with time_tab3:
             st.subheader("📊 Car Dependency Analysis from Census 2021")
             
             if market_data is not None and not market_data.empty:
@@ -2236,15 +2400,15 @@ def main():
                 with col3:
                     st.metric("🚇 Low Dependency Areas", f"{len(low_dependency_areas)}")
                 
-                # Top 20 car dependency areas
-                top_dependency = market_data.nlargest(20, 'Car_Dependency_Rate')
+                # Top 20 car dependency areas - Arranged from lowest to largest
+                top_dependency = market_data.nlargest(20, 'Car_Dependency_Rate').sort_values('Car_Dependency_Rate', ascending=True)
                 
                 fig = px.bar(
                     top_dependency,
                     x='Car_Dependency_Rate',
                     y='Authority',
                     orientation='h',
-                    title="Top 20 Areas by Car Dependency Rate",
+                    title="Top 20 Areas by Car Dependency Rate (Lowest to Largest)",
                     labels={'Car_Dependency_Rate': 'Car Dependency Rate (%)', 'Authority': 'Local Authority'},
                     color='Car_Dependency_Rate',
                     color_continuous_scale='Reds'
@@ -2253,15 +2417,15 @@ def main():
                 fig.update_layout(height=600)
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # Bottom 20 car dependency areas
-                bottom_dependency = market_data.nsmallest(20, 'Car_Dependency_Rate')
+                # Bottom 20 car dependency areas - Also flipped to show progression
+                bottom_dependency = market_data.nsmallest(20, 'Car_Dependency_Rate').sort_values('Car_Dependency_Rate', ascending=True)
                 
                 fig2 = px.bar(
                     bottom_dependency,
                     x='Car_Dependency_Rate',
                     y='Authority',
                     orientation='h',
-                    title="Top 20 Areas with Lowest Car Dependency",
+                    title="Top 20 Areas with Lowest Car Dependency (Lowest to Highest)",
                     labels={'Car_Dependency_Rate': 'Car Dependency Rate (%)', 'Authority': 'Local Authority'},
                     color='Car_Dependency_Rate',
                     color_continuous_scale='Greens'

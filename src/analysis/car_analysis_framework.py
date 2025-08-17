@@ -193,47 +193,59 @@ class CarAnalysisFramework:
         print("\n=== Performing Topic Modeling ===")
         
         def extract_topics(text_series, n_topics=5, n_words=10):
-            """Extract topics using LDA"""
-        # Clean and prepare text
-        clean_texts = self.preprocess_text(text_series)
-        clean_texts = clean_texts[clean_texts != ""]
-        
-        if len(clean_texts) == 0:
-                return []
-        
-        # Vectorize
-        vectorizer = CountVectorizer(
-            stop_words='english', 
-            max_df=0.95, 
-            min_df=2,
-            max_features=1000
-        )
-        
-        try:
-            dtm = vectorizer.fit_transform(clean_texts)
+            """Extract topics using LDA and return both topics and document-topic assignments"""
+            # Clean and prepare text
+            clean_texts = self.preprocess_text(text_series)
             
-            # LDA
-            lda = LatentDirichletAllocation(
-                n_components=n_topics, 
-                random_state=42,
-                max_iter=50
+            # Create a mask for valid texts
+            valid_mask = (clean_texts != "") & (clean_texts.notna())
+            valid_texts = clean_texts[valid_mask]
+            
+            if len(valid_texts) == 0:
+                return [], [], valid_mask
+            
+            # Vectorize
+            vectorizer = CountVectorizer(
+                stop_words='english', 
+                max_df=0.95, 
+                min_df=2,
+                max_features=1000
             )
-            lda.fit(dtm)
             
-            # Get topics
-            feature_names = vectorizer.get_feature_names_out()
-            topics = []
-            
-            for topic_idx, topic in enumerate(lda.components_):
-                top_words_idx = topic.argsort()[-n_words:][::-1]
-                top_words = [feature_names[i] for i in top_words_idx]
-                topics.append(top_words)
-            
-            return topics
-            
-        except Exception as e:
-            print(f"Error in topic modeling: {e}")
-            return []
+            try:
+                dtm = vectorizer.fit_transform(valid_texts)
+                
+                # LDA
+                lda = LatentDirichletAllocation(
+                    n_components=n_topics, 
+                    random_state=42,
+                    max_iter=50
+                )
+                lda.fit(dtm)
+                
+                # Get topics
+                feature_names = vectorizer.get_feature_names_out()
+                topics = []
+                
+                for topic_idx, topic in enumerate(lda.components_):
+                    top_words_idx = topic.argsort()[-n_words:][::-1]
+                    top_words = [feature_names[i] for i in top_words_idx]
+                    topics.append(top_words)
+                
+                # Get document-topic assignments
+                doc_topic_dist = lda.transform(dtm)
+                doc_topics = []
+                
+                for doc_dist in doc_topic_dist:
+                    # Get the topic with highest probability for this document
+                    dominant_topic_idx = np.argmax(doc_dist)
+                    doc_topics.append(topics[dominant_topic_idx])
+                
+                return topics, doc_topics, valid_mask
+                
+            except Exception as e:
+                print(f"Error in topic modeling: {e}")
+                return [], [], valid_mask
         
         # Get text columns
         text_cols = self.get_text_columns()
@@ -243,18 +255,40 @@ class CarAnalysisFramework:
             news_text_col = text_cols['news']
             if news_text_col in self.car_news_df.columns:
                 print(f"Extracting topics for news using column: {news_text_col}")
-                topics = extract_topics(self.car_news_df[news_text_col])
-                # Store topics as JSON string
-                self.car_news_df['topics'] = json.dumps(topics) if topics else None
+                topics, doc_topics, valid_mask = extract_topics(self.car_news_df[news_text_col])
+                
+                if doc_topics:
+                    # Initialize topics column with None
+                    self.car_news_df['topics'] = None
+                    
+                    # Assign topics only to valid documents
+                    valid_indices = valid_mask[valid_mask].index
+                    for i, doc_topic in enumerate(doc_topics):
+                        if i < len(valid_indices):
+                            idx = valid_indices[i]
+                            self.car_news_df.loc[idx, 'topics'] = json.dumps(doc_topic)
+                else:
+                    self.car_news_df['topics'] = None
         
         # Apply topic modeling to reviews
         if 'reviews' in text_cols and self.car_reviews_df is not None:
             reviews_text_col = text_cols['reviews']
             if reviews_text_col in self.car_reviews_df.columns:
                 print(f"Extracting topics for reviews using column: {reviews_text_col}")
-                topics = extract_topics(self.car_reviews_df[reviews_text_col])
-                # Store topics as JSON string
-                self.car_reviews_df['topics'] = json.dumps(topics) if topics else None
+                topics, doc_topics, valid_mask = extract_topics(self.car_reviews_df[reviews_text_col])
+                
+                if doc_topics:
+                    # Initialize topics column with None
+                    self.car_reviews_df['topics'] = None
+                    
+                    # Assign topics only to valid documents
+                    valid_indices = valid_mask[valid_mask].index
+                    for i, doc_topic in enumerate(doc_topics):
+                        if i < len(valid_indices):
+                            idx = valid_indices[i]
+                            self.car_reviews_df.loc[idx, 'topics'] = json.dumps(doc_topic)
+                else:
+                    self.car_reviews_df['topics'] = None
         
         print("✓ Topic modeling completed")
     
@@ -274,10 +308,13 @@ class CarAnalysisFramework:
                          'lexus', 'acura', 'infiniti', 'cadillac', 'buick', 'chrysler']
             
             entities = []
+            valid_mask = []
             
             # Process all texts
             for text in text_series:
                 if pd.isna(text) or str(text).strip() == "":
+                    entities.append([])
+                    valid_mask.append(False)
                     continue
                     
                 doc = self.nlp(str(text))
@@ -293,10 +330,10 @@ class CarAnalysisFramework:
                     if brand in text_lower:
                         text_entities.append(f"{brand}:BRAND")
                 
-                if text_entities:  # Only append if we found entities
-                    entities.append(text_entities)
+                entities.append(text_entities)
+                valid_mask.append(True)
             
-            return entities
+            return entities, valid_mask
         
         # Get text columns
         text_cols = self.get_text_columns()
@@ -306,18 +343,24 @@ class CarAnalysisFramework:
             news_text_col = text_cols['news']
             if news_text_col in self.car_news_df.columns:
                 print(f"Extracting entities for news using column: {news_text_col}")
-                entities = extract_entities(self.car_news_df[news_text_col])
-                # Store entities as JSON string
-                self.car_news_df['entities'] = json.dumps(entities) if entities else None
+                entities, valid_mask = extract_entities(self.car_news_df[news_text_col])
+                # Store entities as individual lists for each document
+                if entities:
+                    self.car_news_df['entities'] = [json.dumps(doc_entities) if doc_entities else None for doc_entities in entities]
+                else:
+                    self.car_news_df['entities'] = None
         
         # Apply NER to reviews
         if 'reviews' in text_cols and self.car_reviews_df is not None:
             reviews_text_col = text_cols['reviews']
             if reviews_text_col in self.car_reviews_df.columns:
                 print(f"Extracting entities for reviews using column: {reviews_text_col}")
-                entities = extract_entities(self.car_reviews_df[reviews_text_col])
-                # Store entities as JSON string
-                self.car_reviews_df['entities'] = json.dumps(entities) if entities else None
+                entities, valid_mask = extract_entities(self.car_reviews_df[reviews_text_col])
+                # Store entities as individual lists for each document
+                if entities:
+                    self.car_reviews_df['entities'] = [json.dumps(doc_entities) if doc_entities else None for doc_entities in entities]
+                else:
+                    self.car_reviews_df['entities'] = None
         
         print("✓ Named Entity Recognition completed")
     
@@ -326,11 +369,11 @@ class CarAnalysisFramework:
         print("\n=== Performing Keyword Analysis ===")
         
         def extract_keywords(text_series, top_n=20):
-            """Extract top keywords from text"""
+            """Extract top keywords from text and return both global keywords and document-level keyword counts"""
             # Clean texts
             clean_texts = self.preprocess_text(text_series)
             
-            # Combine all texts
+            # Combine all texts for global keyword extraction
             all_text = ' '.join(clean_texts.dropna())
             
             # Tokenize and remove stopwords with fallback handling
@@ -349,13 +392,32 @@ class CarAnalysisFramework:
             
             tokens = [token for token in tokens if token.isalpha() and token not in stop_words]
             
-            # Count frequencies
+            # Count frequencies for global keywords
             word_freq = Counter(tokens)
+            global_keywords = [word for word, freq in word_freq.most_common(top_n)]
             
-            # Get top keywords
-            keywords = [word for word, freq in word_freq.most_common(top_n)]
+            # Now extract document-level keyword counts
+            doc_keyword_counts = []
+            for text in clean_texts:
+                if pd.isna(text) or str(text).strip() == "":
+                    doc_keyword_counts.append({})
+                    continue
+                
+                # Tokenize individual document
+                try:
+                    doc_tokens = word_tokenize(str(text).lower())
+                except LookupError:
+                    doc_tokens = re.findall(r'\b[a-zA-Z]+\b', str(text).lower())
+                
+                # Count keywords in this document
+                doc_tokens = [token for token in doc_tokens if token.isalpha() and token not in stop_words]
+                doc_word_freq = Counter(doc_tokens)
+                
+                # Only keep keywords that are in our global top keywords
+                doc_keywords = {word: count for word, count in doc_word_freq.items() if word in global_keywords}
+                doc_keyword_counts.append(doc_keywords)
             
-            return keywords
+            return global_keywords, doc_keyword_counts
         
         # Get text columns
         text_cols = self.get_text_columns()
@@ -365,18 +427,34 @@ class CarAnalysisFramework:
             news_text_col = text_cols['news']
             if news_text_col in self.car_news_df.columns:
                 print(f"Extracting keywords for news using column: {news_text_col}")
-                keywords = extract_keywords(self.car_news_df[news_text_col])
-                # Store keywords as JSON string
-                self.car_news_df['keywords'] = json.dumps(keywords) if keywords else None
+                global_keywords, doc_keyword_counts = extract_keywords(self.car_news_df[news_text_col])
+                
+                if global_keywords and doc_keyword_counts:
+                    # Store global keywords
+                    self.car_news_df['keywords'] = json.dumps(global_keywords)
+                    
+                    # Store document-level keyword counts
+                    self.car_news_df['keyword_counts'] = [json.dumps(doc_counts) if doc_counts else None for doc_counts in doc_keyword_counts]
+                else:
+                    self.car_news_df['keywords'] = None
+                    self.car_news_df['keyword_counts'] = None
         
         # Apply keyword analysis to reviews
         if 'reviews' in text_cols and self.car_reviews_df is not None:
             reviews_text_col = text_cols['reviews']
             if reviews_text_col in self.car_reviews_df.columns:
                 print(f"Extracting keywords for reviews using column: {reviews_text_col}")
-                keywords = extract_keywords(self.car_reviews_df[reviews_text_col])
-                # Store keywords as JSON string
-                self.car_reviews_df['keywords'] = json.dumps(keywords) if keywords else None
+                global_keywords, doc_keyword_counts = extract_keywords(self.car_reviews_df[reviews_text_col])
+                
+                if global_keywords and doc_keyword_counts:
+                    # Store global keywords
+                    self.car_reviews_df['keywords'] = json.dumps(global_keywords)
+                    
+                    # Store document-level keyword counts
+                    self.car_reviews_df['keyword_counts'] = [json.dumps(doc_counts) if doc_counts else None for doc_counts in doc_keyword_counts]
+                else:
+                    self.car_reviews_df['keywords'] = None
+                    self.car_reviews_df['keyword_counts'] = None
         
         print("✓ Keyword analysis completed")
     
@@ -385,7 +463,7 @@ class CarAnalysisFramework:
         print("\n=== Performing N-gram Analysis ===")
         
         def extract_ngrams(text_series, n=2, top_n=15):
-            """Extract top n-grams from text with better stopword filtering"""
+            """Extract top n-grams from text with better stopword filtering and document-level counts"""
             # Clean texts
             clean_texts = self.preprocess_text(text_series)
             
@@ -400,7 +478,7 @@ class CarAnalysisFramework:
             car_stopwords = {'car', 'vehicle', 'auto', 'automotive', 'review', 'test', 'drive', 'model', 'new', 'good', 'bad', 'great', 'nice', 'best', 'worst', 'really', 'very', 'much', 'get', 'go', 'like', 'would', 'could', 'should', 'one', 'two', 'also', 'even', 'well', 'way', 'say', 'said', 'make', 'made', 'take', 'come', 'see', 'know', 'think', 'want', 'need', 'use', 'used', 'look', 'looks', 'feel', 'feels', 'seem', 'seems'}
             stop_words.update(car_stopwords)
             
-            # Get n-grams
+            # Get global n-grams and their frequencies
             all_ngrams = []
             for text in clean_texts:
                 if text.strip():
@@ -423,13 +501,44 @@ class CarAnalysisFramework:
                                 clean_ngrams.append(ngram)
                         all_ngrams.extend(clean_ngrams)
             
-            # Count frequencies
+            # Count global frequencies
             ngram_freq = Counter(all_ngrams)
+            global_top_ngrams = [' '.join(ng) for ng, freq in ngram_freq.most_common(top_n)]
             
-            # Get top n-grams
-            top_ngrams = [' '.join(ng) for ng, freq in ngram_freq.most_common(top_n)]
+            # Now extract document-level n-gram counts
+            doc_ngram_counts = []
+            for text in clean_texts:
+                if pd.isna(text) or str(text).strip() == "":
+                    doc_ngram_counts.append({})
+                    continue
+                
+                try:
+                    tokens = word_tokenize(str(text).lower())
+                except LookupError:
+                    import re
+                    tokens = re.findall(r'\b[a-zA-Z]+\b', str(text).lower())
+                
+                # Remove stopwords and short words
+                filtered_tokens = [token for token in tokens if token.isalpha() and len(token) > 2 and token not in stop_words]
+                
+                if len(filtered_tokens) >= n:
+                    ngram_list = list(ngrams(filtered_tokens, n))
+                    # Filter n-grams that contain stopwords
+                    clean_ngrams = []
+                    for ngram in ngram_list:
+                        if not any(word in stop_words for word in ngram):
+                            clean_ngrams.append(ngram)
+                    
+                    # Count n-grams in this document
+                    doc_ngram_freq = Counter(clean_ngrams)
+                    
+                    # Only keep n-grams that are in our global top n-grams
+                    doc_ngrams = {' '.join(ng): count for ng, count in doc_ngram_freq.items() if ' '.join(ng) in global_top_ngrams}
+                    doc_ngram_counts.append(doc_ngrams)
+                else:
+                    doc_ngram_counts.append({})
             
-            return top_ngrams
+            return global_top_ngrams, doc_ngram_counts
         
         # Get text columns
         text_cols = self.get_text_columns()
@@ -439,23 +548,31 @@ class CarAnalysisFramework:
             news_text_col = text_cols['news']
             if news_text_col in self.car_news_df.columns:
                 print(f"Extracting bigrams for news using column: {news_text_col}")
-                bigram_results = extract_ngrams(self.car_news_df[news_text_col], n=2, top_n=15)
-                # Store bigrams as JSON string with validation
-                if bigram_results and isinstance(bigram_results, list):
-                    self.car_news_df['top_bigrams'] = json.dumps(bigram_results, ensure_ascii=False)
+                global_bigrams, doc_bigram_counts = extract_ngrams(self.car_news_df[news_text_col], n=2, top_n=15)
+                
+                if global_bigrams and doc_bigram_counts:
+                    # Store global bigrams
+                    self.car_news_df['top_bigrams'] = json.dumps(global_bigrams, ensure_ascii=False)
+                    # Store document-level bigram counts
+                    self.car_news_df['bigram_counts'] = [json.dumps(doc_counts) if doc_counts else None for doc_counts in doc_bigram_counts]
                 else:
                     self.car_news_df['top_bigrams'] = json.dumps([])
+                    self.car_news_df['bigram_counts'] = None
                 
                 print(f"Extracting trigrams for news using column: {news_text_col}")
-                trigram_results = extract_ngrams(self.car_news_df[news_text_col], n=3, top_n=15)
-                # Store trigrams as JSON string with validation
-                if trigram_results and isinstance(trigram_results, list):
-                    self.car_news_df['top_trigrams'] = json.dumps(trigram_results, ensure_ascii=False)
+                global_trigrams, doc_trigram_counts = extract_ngrams(self.car_news_df[news_text_col], n=3, top_n=15)
+                
+                if global_trigrams and doc_trigram_counts:
+                    # Store global trigrams
+                    self.car_news_df['top_trigrams'] = json.dumps(global_trigrams, ensure_ascii=False)
+                    # Store document-level trigram counts
+                    self.car_news_df['trigram_counts'] = [json.dumps(doc_counts) if doc_counts else None for doc_counts in doc_trigram_counts]
                 else:
                     self.car_news_df['top_trigrams'] = json.dumps([])
+                    self.car_news_df['trigram_counts'] = None
                 
                 # Keep the old column for backward compatibility
-                combined_ngrams = (bigram_results if bigram_results else []) + (trigram_results if trigram_results else [])
+                combined_ngrams = (global_bigrams if global_bigrams else []) + (global_trigrams if global_trigrams else [])
                 self.car_news_df['top_ngrams'] = json.dumps(combined_ngrams, ensure_ascii=False)
         
         # Apply n-gram analysis to reviews
@@ -463,23 +580,31 @@ class CarAnalysisFramework:
             reviews_text_col = text_cols['reviews']
             if reviews_text_col in self.car_reviews_df.columns:
                 print(f"Extracting bigrams for reviews using column: {reviews_text_col}")
-                bigram_results = extract_ngrams(self.car_reviews_df[reviews_text_col], n=2, top_n=15)
-                # Store bigrams as JSON string with validation
-                if bigram_results and isinstance(bigram_results, list):
-                    self.car_reviews_df['top_bigrams'] = json.dumps(bigram_results, ensure_ascii=False)
+                global_bigrams, doc_bigram_counts = extract_ngrams(self.car_reviews_df[reviews_text_col], n=2, top_n=15)
+                
+                if global_bigrams and doc_bigram_counts:
+                    # Store global bigrams
+                    self.car_reviews_df['top_bigrams'] = json.dumps(global_bigrams, ensure_ascii=False)
+                    # Store document-level bigram counts
+                    self.car_reviews_df['bigram_counts'] = [json.dumps(doc_counts) if doc_counts else None for doc_counts in doc_bigram_counts]
                 else:
                     self.car_reviews_df['top_bigrams'] = json.dumps([])
+                    self.car_reviews_df['bigram_counts'] = None
                 
                 print(f"Extracting trigrams for reviews using column: {reviews_text_col}")
-                trigram_results = extract_ngrams(self.car_reviews_df[reviews_text_col], n=3, top_n=15)
-                # Store trigrams as JSON string with validation
-                if trigram_results and isinstance(trigram_results, list):
-                    self.car_reviews_df['top_trigrams'] = json.dumps(trigram_results, ensure_ascii=False)
+                global_trigrams, doc_trigram_counts = extract_ngrams(self.car_reviews_df[reviews_text_col], n=3, top_n=15)
+                
+                if global_trigrams and doc_trigram_counts:
+                    # Store global trigrams
+                    self.car_reviews_df['top_trigrams'] = json.dumps(global_trigrams, ensure_ascii=False)
+                    # Store document-level trigram counts
+                    self.car_reviews_df['trigram_counts'] = [json.dumps(doc_counts) if doc_counts else None for doc_counts in doc_trigram_counts]
                 else:
                     self.car_reviews_df['top_trigrams'] = json.dumps([])
+                    self.car_reviews_df['trigram_counts'] = None
                 
                 # Keep the old column for backward compatibility
-                combined_ngrams = (bigram_results if bigram_results else []) + (trigram_results if trigram_results else [])
+                combined_ngrams = (global_bigrams if global_bigrams else []) + (global_trigrams if global_trigrams else [])
                 self.car_reviews_df['top_ngrams'] = json.dumps(combined_ngrams, ensure_ascii=False)
         
         print("✓ N-gram analysis completed")
@@ -578,18 +703,18 @@ class CarAnalysisFramework:
             if 'sentiment' in self.car_news_df.columns:
                 sentiment_dist = self.car_news_df['sentiment'].value_counts()
                 print("News Sentiment Distribution:")
-            for sentiment, count in sentiment_dist.items():
-                percentage = (count / len(self.car_news_df)) * 100
-                print(f"- {sentiment.capitalize()}: {count} ({percentage:.1f}%)")
+                for sentiment, count in sentiment_dist.items():
+                    percentage = (count / len(self.car_news_df)) * 100
+                    print(f"- {sentiment.capitalize()}: {count} ({percentage:.1f}%)")
         
         if self.car_reviews_df is not None:
             print(f"\nCar Reviews Dataset: {self.car_reviews_df.shape}")
             if 'sentiment' in self.car_reviews_df.columns:
                 sentiment_dist = self.car_reviews_df['sentiment'].value_counts()
                 print("Review Sentiment Distribution:")
-            for sentiment, count in sentiment_dist.items():
-                percentage = (count / len(self.car_reviews_df)) * 100
-                print(f"- {sentiment.capitalize()}: {count} ({percentage:.1f}%)")
+                for sentiment, count in sentiment_dist.items():
+                    percentage = (count / len(self.car_reviews_df)) * 100
+                    print(f"- {sentiment.capitalize()}: {count} ({percentage:.1f}%)")
             
             if 'rating' in self.car_reviews_df.columns:
                 print(f"\nReview Rating Statistics:")
