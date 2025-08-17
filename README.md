@@ -94,6 +94,117 @@ demo_project/
 - **Car News**: News articles about cars and automotive industry
 - **Car Reviews**: User reviews and ratings of vehicles
 
+## 🧠 NLP Techniques & Tools
+
+### Core NLP Libraries
+
+#### **Natural Language Processing (NLTK)**
+- **`nltk`** - Core NLP library for text processing
+- **`stopwords`** - Remove common words (the, and, or, etc.)
+- **`word_tokenize`** - Split text into individual words
+- **`sent_tokenize`** - Split text into sentences
+- **`WordNetLemmatizer`** - Reduce words to root form (running → run)
+- **`ngrams`** - Extract word sequences (bigrams, trigrams)
+
+#### **Advanced NLP (spaCy)**
+- **`spacy`** - Industrial-strength NLP library
+- **`en_core_web_sm`** - English language model
+- **Named Entity Recognition (NER)** - Identify organizations, locations, products
+- **Part-of-speech tagging** - Identify word types (noun, verb, adjective)
+
+#### **Sentiment Analysis**
+- **`TextBlob`** - Polarity and subjectivity scoring
+- **`VADER`** - Valence Aware Dictionary and sEntiment Reasoner
+  - Compound sentiment score (-1 to +1)
+  - Positive, negative, neutral probabilities
+
+### Machine Learning & Text Processing
+
+#### **Text Vectorization**
+- **`CountVectorizer`** - Convert text to word frequency matrix
+- **`TfidfVectorizer`** - Term frequency-inverse document frequency
+- **Feature extraction** - Transform text into numerical features
+
+#### **Topic Modeling**
+- **`LatentDirichletAllocation (LDA)`** - Discover hidden topics in documents
+- **`NMF`** - Non-negative Matrix Factorization for topic extraction
+- **Document-topic assignment** - Map each document to dominant topics
+
+#### **Clustering & Similarity**
+- **`KMeans`** - Group similar documents together
+- **`cosine_similarity`** - Measure text similarity between documents
+
+### Text Analysis Techniques
+
+#### **Keyword Extraction**
+- **Frequency-based analysis** - Count word occurrences
+- **Stopword removal** - Filter out common, non-meaningful words
+- **Document-level keyword counting** - Track keywords per document
+- **Global keyword ranking** - Identify most important terms across dataset
+
+#### **N-gram Analysis**
+- **Bigrams** - Two-word sequences (e.g., "electric vehicle")
+- **Trigrams** - Three-word sequences (e.g., "new car model")
+- **Frequency counting** - Track phrase occurrences
+- **Document-level n-gram tracking** - Monitor phrase usage per document
+
+#### **Named Entity Recognition**
+- **Organization detection** - Car companies, brands
+- **Geographic entities** - Locations, cities
+- **Product identification** - Car models, features
+- **Custom entity extraction** - Car brand recognition
+
+### Visualization & Output
+
+#### **Text Visualization**
+- **`WordCloud`** - Visual representation of word frequencies
+- **Interactive charts** - Plotly-based visualizations
+- **Frequency distributions** - Bar charts of most common terms
+- **Topic visualization** - Display discovered topics
+
+### Data Processing & Storage
+
+#### **Text Preprocessing**
+- **Text cleaning** - Remove special characters, normalize
+- **Tokenization** - Split into words/sentences
+- **Lemmatization** - Reduce words to base form
+- **Case normalization** - Convert to lowercase
+
+#### **Database Integration**
+- **JSON serialization** - Store complex NLP results
+- **PostgreSQL storage** - Persistent storage of analysis results
+- **Structured data** - Organized storage of entities, topics, keywords
+
+### Complete Package Requirements
+
+```bash
+# Core NLP
+nltk>=3.6.0          # Natural language processing
+spacy>=3.1.0         # Advanced NLP with pre-trained models
+textblob>=0.15.0     # Sentiment analysis
+vaderSentiment>=3.3.0 # VADER sentiment analysis
+
+# Machine Learning
+scikit-learn>=1.0.0  # Text vectorization, topic modeling, clustering
+gensim>=4.0.0        # Additional NLP algorithms
+
+# Visualization
+wordcloud>=1.8.0     # Word cloud generation
+plotly>=5.0.0        # Interactive charts
+
+# Data Processing
+pandas>=1.3.0        # Data manipulation
+numpy>=1.21.0        # Numerical operations
+```
+
+### NLP Pipeline Summary
+
+The framework implements a **comprehensive NLP pipeline**:
+
+1. **Text Input** → 2. **Preprocessing** → 3. **Feature Extraction** → 4. **Analysis** → 5. **Results Storage**
+
+This provides **enterprise-grade NLP capabilities** for automotive text analysis, combining multiple approaches for robust sentiment analysis, topic discovery, and entity recognition.
+
 ## 🛠️ Installation
 
 1. **Clone the repository**:
